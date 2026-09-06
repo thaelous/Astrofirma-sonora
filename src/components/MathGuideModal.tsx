@@ -8,6 +8,7 @@ import {
   Disc3,
   Compass,
   Sparkles,
+  Mic,
 } from 'lucide-react';
 
 interface MathGuideModalProps {
@@ -187,6 +188,34 @@ export const MathGuideModal: React.FC<MathGuideModalProps> = ({ isOpen, onClose 
                 La señal atraviesa un <strong className="text-white">ConvolverNode</strong> cargado con una respuesta de impulso estéreo sintetizada algorítmicamente. La dispersión simula reflexiones primarias y cola de reverberación difusa en tres entornos acústicos seleccionables: <strong className="text-sky-300">Salón</strong> (cálido y controlado), <strong className="text-cyan-300">Cueva</strong> (profundo y resonante) o <strong className="text-purple-300">Galaxia</strong> (etéreo y expansivo).
               </p>
             </div>
+          </div>
+
+          {/* SECTION 5: DECODIFICACIÓN ACÚSTICA INVERSA (MODO RECEPTOR) */}
+          <div className="p-5 rounded-xl bg-[#090e2a]/90 border border-cyan-500/30 space-y-3 shadow-inner">
+            <div className="flex items-center gap-2.5 text-cyan-300 font-bold font-mono text-sm pb-2 border-b border-indigo-500/20">
+              <Mic className="w-4 h-4 text-cyan-400" />
+              <span>5. Decodificación Acústica Inversa (Modo Receptor)</span>
+            </div>
+            <p className="text-xs text-slate-300">
+              El <strong className="text-white">Modo Receptor</strong> implementa el proceso inverso matemático en tiempo real a través del micrófono del navegador (<span className="font-mono text-cyan-300">getUserMedia</span>):
+            </p>
+            <div className="bg-[#040614] p-3 rounded-lg border border-cyan-500/25 space-y-2 text-xs">
+              <div className="text-cyan-300 font-mono font-semibold">
+                &bull; Detección de Tono por Autocorrelación Temporal:
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono pl-3">
+                r(k) = &Sigma; x[i] &bull; x[i + k] &emsp;&rarr;&emsp; Interpolación parabólica en k* para estimar f en Hz
+              </p>
+              <div className="text-cyan-300 font-mono font-semibold">
+                &bull; Ecuación Inversa de Hertz a MIDI y ASCII:
+              </div>
+              <div className="bg-[#080d28] p-2 rounded text-center font-mono text-sm text-sky-200">
+                MIDI = round( 69 + 12 &times; log<sub>2</sub>( f / 440 ) ) &emsp;&rarr;&emsp; Carácter = String.fromCharCode(MIDI)
+              </div>
+            </div>
+            <p className="text-xs text-slate-300">
+              Al concluir la secuencia por silencio natural, se reconstruye el nombre letra a letra y se traza de inmediato su polinomio cartesiano original.
+            </p>
           </div>
         </div>
 

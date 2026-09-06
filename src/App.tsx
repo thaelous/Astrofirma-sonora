@@ -7,13 +7,15 @@ import { Header } from './components/Header';
 import { LetterRibbon } from './components/LetterRibbon';
 import { CartesianCanvas } from './components/CartesianCanvas';
 import { OscilloscopeCanvas } from './components/OscilloscopeCanvas';
+import { Spectral3DCanvas } from './components/Spectral3DCanvas';
 import { MathDisplay } from './components/MathDisplay';
 import { TransportBar } from './components/TransportBar';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
 import { MathGuideModal } from './components/MathGuideModal';
 import { ExportAudioModal } from './components/ExportAudioModal';
 import { SplashScreen } from './components/SplashScreen';
-import { LayoutGrid, LineChart, Waves } from 'lucide-react';
+import { AcousticDecoder } from './components/AcousticDecoder';
+import { LayoutGrid, LineChart, Waves, Flame } from 'lucide-react';
 
 const INITIAL_SETTINGS: AudioSettings = {
   mode: 'melodic',
@@ -30,12 +32,13 @@ const INITIAL_SETTINGS: AudioSettings = {
   reverbMix: 0.4,
 };
 
-type VisualTab = 'cartesian' | 'oscilloscope' | 'split';
+type VisualTab = 'cartesian' | 'oscilloscope' | 'spectral3d' | 'split';
 
 export default function App() {
   const [word, setWord] = useState('ALTAIR');
   const [mathMode, setMathMode] = useState<MathMode>('lagrange');
   const [visualTab, setVisualTab] = useState<VisualTab>('split');
+  const [appMode, setAppMode] = useState<'emitter' | 'receiver'>('emitter');
   const [generationCount, setGenerationCount] = useState(0);
   const [settings, setSettings] = useState<AudioSettings>(INITIAL_SETTINGS);
 
@@ -158,17 +161,34 @@ export default function App() {
         onOpenAudioSettings={() => setIsAudioSettingsOpen(true)}
         onOpenMathGuide={() => setIsMathGuideOpen(true)}
         onOpenExport={() => setIsExportModalOpen(true)}
+        appMode={appMode}
+        onSelectMode={(mode) => {
+          if (mode === 'receiver') {
+            handleStop();
+          }
+          setAppMode(mode);
+        }}
       />
 
       {/* Main Content Area: Focused, Clean, Minimalist */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-5 md:px-8 space-y-5">
-        {/* 2. Mapeo de Datos y Equivalencias Acústicas */}
-        <LetterRibbon
-          points={points}
-          activeStep={activeStep}
-          pitchShift={settings.pitchShift}
-          onPreviewNote={handlePreviewNote}
-        />
+        {appMode === 'receiver' ? (
+          <AcousticDecoder
+            onSendToEmitter={(decodedWord) => {
+              handleGenerate(decodedWord);
+              setAppMode('emitter');
+            }}
+          />
+        ) : (
+          <>
+            {/* 2. Mapeo de Datos y Equivalencias Acústicas */}
+            <LetterRibbon
+              key={`ribbon-${word}-${generationCount}`}
+              points={points}
+              activeStep={activeStep}
+              pitchShift={settings.pitchShift}
+              onPreviewNote={handlePreviewNote}
+            />
 
         {/* 3. Visualizador Central Dual (Dimensión Cósmica) */}
         <section className="space-y-3">
@@ -206,6 +226,20 @@ export default function App() {
               >
                 <Waves className="w-3.5 h-3.5" />
                 <span>Osciloscopio en Tiempo Real</span>
+              </button>
+
+              <button
+                id="tab-spectral3d"
+                type="button"
+                onClick={() => setVisualTab('spectral3d')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+                  visualTab === 'spectral3d'
+                    ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white shadow-[0_0_14px_rgba(245,158,11,0.45)] font-semibold'
+                    : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-400" />
+                <span>Espectro 3D</span>
               </button>
 
               <button
@@ -277,6 +311,19 @@ export default function App() {
                   isPlaying={isPlaying}
                 />
               </motion.div>
+            ) : visualTab === 'spectral3d' ? (
+              <motion.div
+                key={`spectral3d-${word}-${generationCount}`}
+                initial={{ opacity: 0, y: 8, scale: 0.99 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.99 }}
+                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <Spectral3DCanvas
+                  analyser={analyser}
+                  isPlaying={isPlaying}
+                />
+              </motion.div>
             ) : (
               <motion.div
                 key={`oscilloscope-${word}-${generationCount}`}
@@ -317,7 +364,9 @@ export default function App() {
             onModeChange={setMathMode}
           />
         </section>
-      </main>
+      </>
+    )}
+  </main>
 
       {/* Subtle Minimal Footer */}
       <footer className="border-t border-indigo-500/10 py-4 px-4 text-center text-xs font-mono text-slate-500">
