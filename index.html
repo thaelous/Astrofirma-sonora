@@ -1,21 +1,2177 @@
-<!doctype html>
-<html lang="es" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AstroFirma Sonora</title>
-    <meta name="description" content="Transforma cualquier palabra o nombre en fórmula matemática, gráfica cartesiana interactiva, síntesis de audio espacial en tiempo real y exportación de archivos WAV." />
-    <meta property="og:title" content="AstroFirma Sonora" />
-    <meta property="og:description" content="Transforma cualquier palabra o nombre en fórmula matemática, gráfica cartesiana interactiva, síntesis de audio espacial en tiempo real y exportación de archivos WAV." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Playfair+Display:ital,wght@1,400;1,600;1,700&family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  </head>
-  <body class="bg-[#040510] text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200 min-h-screen">
-    <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AstroFirma Sonora</title>
+  <meta name="description" content="Transforma cualquier palabra o nombre en fórmula matemática, gráfica cartesiana interactiva, síntesis de audio espacial en tiempo real y exportación de archivos WAV.">
 
+  <!-- Tipografía Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ==========================================================================
+       RESET Y VARIABLES GLOBALES
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-dark: #040510;
+      --bg-card: rgba(8, 12, 36, 0.85);
+      --bg-card-hover: rgba(14, 20, 52, 0.9);
+      --border-card: rgba(99, 102, 241, 0.22);
+      --border-card-bright: rgba(56, 189, 248, 0.4);
+      --accent-cyan: #38bdf8;
+      --accent-indigo: #6366f1;
+      --accent-violet: #a855f7;
+      --accent-emerald: #34d399;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-sub: #64748b;
+      --font-display: 'Cinzel', serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(ellipse at 15% 10%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 25%, rgba(56, 189, 248, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 50% 80%, rgba(168, 85, 247, 0.08) 0%, transparent 60%);
+      background-attachment: fixed;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #03040c; }
+    ::-webkit-scrollbar-thumb { background: #1e2954; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+
+    /* ==========================================================================
+       CABECERA Y NAVEGACIÓN
+       ========================================================================== */
+    header {
+      background: rgba(4, 6, 21, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-card);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.85rem 1.5rem;
+    }
+
+    .header-container {
+      max-width: 1380px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .brand-icon-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #4f46e5, #0ea5e9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 18px rgba(14, 165, 233, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      background: linear-gradient(to right, #ffffff, #a5f3fc, #c7d2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.15;
+    }
+
+    .brand-subtitle {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+    }
+
+    /* Pestañas de Navegación */
+    .tab-bar {
+      display: flex;
+      background: rgba(10, 15, 42, 0.95);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border-card);
+      gap: 4px;
+    }
+
+    .tab-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 1.1rem;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+      background: rgba(99, 102, 241, 0.15);
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(79, 70, 229, 0.85), rgba(14, 165, 233, 0.85));
+      box-shadow: 0 0 14px rgba(14, 165, 233, 0.35);
+      font-weight: 600;
+    }
+
+    /* ==========================================================================
+       CONTENEDOR PRINCIPAL
+       ========================================================================== */
+    main {
+      flex: 1;
+      max-width: 1380px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    .view-section {
+      display: none;
+      animation: fadeIn 0.25s ease-out forwards;
+    }
+
+    .view-section.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Grid Layouts */
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      .grid-2col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Tarjetas UI */
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-card);
+      border-radius: 18px;
+      padding: 1.4rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      margin-bottom: 1.5rem;
+      transition: border-color 0.25s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(99, 102, 241, 0.35);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.15rem;
+      padding-bottom: 0.65rem;
+      border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+    }
+
+    .card-title-group {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #e2e8f0;
+    }
+
+    /* ==========================================================================
+       FORMULARIOS, INPUTS Y BOTONES
+       ========================================================================== */
+    .input-box {
+      display: flex;
+      gap: 0.65rem;
+      margin-bottom: 1rem;
+    }
+
+    .text-input {
+      flex: 1;
+      background: rgba(4, 7, 26, 0.85);
+      border: 1.5px solid rgba(99, 102, 241, 0.35);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .text-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+      background: rgba(6, 10, 36, 0.95);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.25rem;
+      border-radius: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: none;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #4f46e5, #0284c7);
+      color: #fff;
+      box-shadow: 0 0 18px rgba(14, 165, 233, 0.35);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #4338ca, #0369a1);
+      box-shadow: 0 0 24px rgba(14, 165, 233, 0.55);
+      transform: translateY(-1px);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #059669, #10b981);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-success:hover {
+      background: linear-gradient(135deg, #047857, #059669);
+      box-shadow: 0 0 22px rgba(16, 185, 129, 0.55);
+      transform: translateY(-1px);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #dc2626, #e11d48);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(225, 29, 72, 0.35);
+    }
+
+    .btn-danger:hover {
+      background: linear-gradient(135deg, #b91c1c, #be123c);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: rgba(15, 23, 58, 0.8);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #cbd5e1;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(26, 36, 84, 0.9);
+      border-color: var(--accent-cyan);
+      color: #fff;
+    }
+
+    /* Presets Chips */
+    .presets-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .preset-label {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .chip {
+      background: rgba(13, 20, 50, 0.85);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      color: #94a3b8;
+      padding: 0.3rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip:hover {
+      color: #38bdf8;
+      border-color: #38bdf8;
+      background: rgba(14, 165, 233, 0.15);
+    }
+
+    /* ==========================================================================
+       CINTA DE CARACTERES / NOTAS
+       ========================================================================== */
+    .letter-ribbon {
+      display: flex;
+      gap: 0.6rem;
+      overflow-x: auto;
+      padding: 0.4rem 0.2rem 0.8rem 0.2rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .letter-card {
+      flex: 0 0 auto;
+      min-width: 76px;
+      background: rgba(6, 10, 32, 0.95);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 12px;
+      padding: 0.7rem 0.5rem;
+      text-align: center;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .letter-card:hover {
+      border-color: var(--accent-cyan);
+      transform: translateY(-2px);
+    }
+
+    .letter-card.playing {
+      border-color: #34d399;
+      background: rgba(16, 185, 129, 0.18);
+      box-shadow: 0 0 18px rgba(52, 211, 153, 0.5);
+      transform: scale(1.06);
+    }
+
+    .letter-char {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.1;
+    }
+
+    .letter-note {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-top: 0.2rem;
+    }
+
+    .letter-meta {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-sub);
+      margin-top: 0.15rem;
+    }
+
+    /* ==========================================================================
+       CONTROLES DE AUDIO DEL SINTETIZADOR
+       ========================================================================== */
+    .audio-controls-panel {
+      background: rgba(5, 8, 28, 0.8);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 14px;
+      padding: 1.15rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .control-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .control-val {
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+
+    .range-slider {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #1e2954;
+      outline: none;
+      cursor: pointer;
+      accent-color: var(--accent-cyan);
+    }
+
+    .select-dropdown {
+      background: #090e2c;
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: 8px;
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.45rem 0.65rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .select-dropdown:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    /* ==========================================================================
+       CANVAS & VISUALIZADORES
+       ========================================================================== */
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      background: #030514;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.7);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 380px;
+    }
+
+    .canvas-legend {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      pointer-events: none;
+      background: rgba(4, 6, 22, 0.82);
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--text-muted);
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* ==========================================================================
+       DECODIFICADOR ACÚSTICO (MODO RECEPTOR)
+       ========================================================================== */
+    .status-bar-container {
+      background: rgba(6, 10, 32, 0.95);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #64748b;
+      transition: all 0.2s ease;
+    }
+
+    .pulse-dot.active {
+      background: #10b981;
+      box-shadow: 0 0 12px #10b981;
+      animation: pulseAnim 1.4s infinite;
+    }
+
+    .pulse-dot.listening {
+      background: #0284c7;
+      box-shadow: 0 0 12px #0284c7;
+      animation: pulseAnim 1.4s infinite;
+    }
+
+    @keyframes pulseAnim {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.7; }
+    }
+
+    .status-text {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: #e2e8f0;
+    }
+
+    /* Vúmetro LED */
+    .vu-meter-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 4px;
+      height: 14px;
+      background: #030514;
+      padding: 3px;
+      border-radius: 6px;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      margin-top: 0.4rem;
+    }
+
+    .vu-segment {
+      border-radius: 2px;
+      background: #1e2954;
+      transition: background-color 0.05s ease;
+    }
+
+    .vu-segment.lit-green {
+      background: #10b981;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+    }
+
+    .vu-segment.lit-cyan {
+      background: #06b6d4;
+      box-shadow: 0 0 6px rgba(6, 182, 212, 0.7);
+    }
+
+    .vu-segment.lit-amber {
+      background: #f59e0b;
+      box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+    }
+
+    .vu-segment.lit-red {
+      background: #f43f5e;
+      box-shadow: 0 0 6px rgba(244, 63, 94, 0.7);
+    }
+
+    /* Consola Ticker */
+    .console-ticker {
+      background: #02040e;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 10px;
+      padding: 0.65rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 0.85rem;
+    }
+
+    /* Resultados Reconstruidos */
+    .word-reconstructed-banner {
+      background: linear-gradient(135deg, rgba(8, 14, 45, 0.95), rgba(16, 24, 68, 0.95));
+      border: 1.5px solid var(--accent-cyan);
+      border-radius: 16px;
+      padding: 1.5rem;
+      text-align: center;
+      margin-top: 1.5rem;
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.25);
+    }
+
+    .reconstructed-title {
+      font-family: var(--font-display);
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.15em;
+      text-shadow: 0 0 18px rgba(56, 189, 248, 0.6);
+      margin: 0.5rem 0;
+    }
+
+    /* Panel Matemático y Fórmulas */
+    .math-formula-box {
+      background: #030617;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 12px;
+      padding: 1.15rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #a5f3fc;
+      overflow-x: auto;
+      line-height: 1.7;
+    }
+
+    /* ==========================================================================
+       PIE DE PÁGINA
+       ========================================================================== */
+    footer {
+      border-top: 1px solid rgba(99, 102, 241, 0.15);
+      padding: 1.25rem 1.5rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-sub);
+      background: rgba(3, 5, 18, 0.95);
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CABECERA -->
+  <header>
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-icon-box">
+          <!-- Icono SVG Astrofísica -->
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+            <path d="M2 12h20"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">AstroFirma Sonora</h1>
+          <p class="brand-subtitle">Criptografía Armónica &bull; Geometría Estelar &bull; Web Audio API</p>
+        </div>
+      </div>
+
+      <!-- Pestañas de modo -->
+      <nav class="tab-bar">
+        <button class="tab-btn active" id="tab-btn-emitter" onclick="switchView('emitter')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path><circle cx="12" cy="12" r="2"></circle><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path><path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"></path></svg>
+          Modo Emisor
+        </button>
+        <button class="tab-btn" id="tab-btn-receiver" onclick="switchView('receiver')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+          Modo Receptor
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main>
+
+    <!-- ====================================================================
+         VISTA 1: MODO EMISOR (GENERADOR DE FIRMA SONORA Y POLINOMIO)
+         ==================================================================== -->
+    <section id="view-emitter" class="view-section active">
+      <div class="grid-2col">
+
+        <!-- Columna Izquierda: Entrada, Cinta y Controles de Síntesis -->
+        <div>
+          <!-- Tarjeta de Entrada -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan)"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" x2="15" y1="20" y2="20"></line><line x1="12" x2="12" y1="4" y2="20"></line></svg>
+                <h2 class="card-title">Palabra o Nombre Cósmico</h2>
+              </div>
+              <span id="char-counter" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-cyan)">9 caracteres</span>
+            </div>
+
+            <div class="input-box">
+              <input type="text" id="word-input" class="text-input" value="ALDEBARAN" maxlength="32" placeholder="ESCRIBE UN NOMBRE...">
+              <button class="btn btn-primary" onclick="applyInputWord()">Generar</button>
+            </div>
+
+            <!-- Chips de presets rápidos -->
+            <div class="presets-row">
+              <span class="preset-label">Presets:</span>
+              <button class="chip" onclick="setPreset('ALDEBARAN')">ALDEBARAN</button>
+              <button class="chip" onclick="setPreset('PLEYADES')">PLEYADES</button>
+              <button class="chip" onclick="setPreset('ORION')">ORION</button>
+              <button class="chip" onclick="setPreset('SIRIUS')">SIRIUS</button>
+              <button class="chip" onclick="setPreset('COSMOS')">COSMOS</button>
+              <button class="chip" onclick="setPreset('KEPLER')">KEPLER</button>
+            </div>
+
+            <!-- Cinta de Notas Musicales (Letras) -->
+            <div style="margin-top:1rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">
+                <span>Cinta Armónica (ASCII &rarr; Frecuencia)</span>
+                <span id="freq-range-label">440.0 Hz - 523.3 Hz</span>
+              </div>
+              <div id="letter-ribbon" class="letter-ribbon"></div>
+            </div>
+
+            <!-- Controles de Audio y Síntesis -->
+            <div class="audio-controls-panel">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+                <div style="display:flex; gap:0.5rem;">
+                  <button id="btn-play" class="btn btn-success" onclick="togglePlayAudio()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Reproducir
+                  </button>
+                  <button class="btn btn-secondary" onclick="stopAudio()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                    Detener
+                  </button>
+                </div>
+                <button class="btn btn-secondary" onclick="exportWavFile()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                  Exportar WAV
+                </button>
+              </div>
+
+              <!-- Sliders de Control -->
+              <div class="controls-grid">
+                <div class="control-item">
+                  <div class="control-label">
+                    <span>Onda Sonora:</span>
+                  </div>
+                  <select id="synth-wave" class="select-dropdown" onchange="updateSynthParams()">
+                    <option value="sine">Senoidal (Sine)</option>
+                    <option value="triangle">Triangular (Cálida)</option>
+                    <option value="sawtooth">Diente Sierra (Saw)</option>
+                    <option value="square">Cuadrada (Square)</option>
+                  </select>
+                </div>
+
+                <div class="control-item">
+                  <div class="control-label">
+                    <span>Duración Nota:</span>
+                    <span id="val-note-duration" class="control-val">280 ms</span>
+                  </div>
+                  <input type="range" id="slider-note-duration" class="range-slider" min="120" max="600" step="20" value="280" oninput="updateSynthParams()">
+                </div>
+
+                <div class="control-item">
+                  <div class="control-label">
+                    <span>Volumen:</span>
+                    <span id="val-volume" class="control-val">75%</span>
+                  </div>
+                  <input type="range" id="slider-volume" class="range-slider" min="0" max="100" step="5" value="75" oninput="updateSynthParams()">
+                </div>
+
+                <div class="control-item">
+                  <div class="control-label">
+                    <span>Octava / Shift:</span>
+                    <span id="val-octave" class="control-val">0</span>
+                  </div>
+                  <input type="range" id="slider-octave" class="range-slider" min="-12" max="12" step="1" value="0" oninput="updateSynthParams()">
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Tarjeta de Análisis Matemático y Fórmula -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-violet)"><line x1="4" x2="20" y1="9" y2="9"></line><line x1="4" x2="20" y1="15" y2="15"></line><line x1="10" x2="8" y1="3" y2="21"></line><line x1="16" x2="14" y1="3" y2="21"></line></svg>
+                <h3 class="card-title">Fórmula del Polinomio de Lagrange</h3>
+              </div>
+              <button class="btn btn-secondary" style="padding:0.3rem 0.6rem; font-size:0.75rem;" onclick="copyFormula()">Copiar</button>
+            </div>
+            <div id="math-formula-container" class="math-formula-box">
+              Cargando polinomio...
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Plano Cartesiano Interactivo 2D -->
+        <div>
+          <div class="card" style="height: calc(100% - 1.5rem); display: flex; flex-direction: column;">
+            <div class="card-header">
+              <div class="card-title-group">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-emerald)"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12" x2="12.01" y1="16" y2="16"></line></svg>
+                <h3 class="card-title">Plano Cartesiano & Curva Interpolada</h3>
+              </div>
+              <div style="display:flex; gap:0.5rem; align-items:center;">
+                <select id="select-curve-type" class="select-dropdown" style="font-size:0.75rem; padding:0.3rem 0.5rem;" onchange="renderCartesianCanvas()">
+                  <option value="lagrange">Polinomio de Lagrange P(x)</option>
+                  <option value="spline">Spline Cúbica Suave</option>
+                  <option value="linear">Segmentada Lineal</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Canvas Cartesiano -->
+            <div class="canvas-container" style="flex:1; min-height:480px;">
+              <canvas id="cartesian-canvas"></canvas>
+              <div class="canvas-legend">
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:#38bdf8"></div>
+                  <span>Puntos (xi, yi)</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:#818cf8"></div>
+                  <span>Curva Continua</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:#34d399"></div>
+                  <span>Cursor de Reproducción</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ====================================================================
+         VISTA 2: MODO RECEPTOR (DECODIFICADOR ACÚSTICO POR MICRÓFONO)
+         ==================================================================== -->
+    <section id="view-receiver" class="view-section">
+      <!-- Barra de Estado del Micrófono -->
+      <div class="status-bar-container">
+        <div class="status-indicator">
+          <div id="mic-pulse-dot" class="pulse-dot"></div>
+          <div>
+            <div id="mic-status-title" class="status-text">Micrófono en espera</div>
+            <div id="mic-status-desc" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-sub)">Presiona "Comenzar a Escuchar" para activar la captura.</div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+          <button id="btn-toggle-listen" class="btn btn-primary" onclick="toggleMicrophone()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+            Comenzar a Escuchar
+          </button>
+          <button class="btn btn-secondary" onclick="resetReceiver()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+            Reiniciar Receptor
+          </button>
+          <button class="btn btn-secondary" onclick="toggleReceiverSettings()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Calibración
+          </button>
+        </div>
+      </div>
+
+      <!-- Panel de Ajustes de Calibración Desplegable -->
+      <div id="receiver-settings-card" class="card" style="display:none; margin-bottom:1.5rem;">
+        <div class="card-header">
+          <h3 class="card-title">Ajustes del Algoritmo de Detección (YIN / Autocorrelación)</h3>
+        </div>
+        <div class="controls-grid">
+          <div class="control-item">
+            <div class="control-label">
+              <span>Umbral Ruido (RMS):</span>
+              <span id="val-noise-thresh" class="control-val">1.5%</span>
+            </div>
+            <input type="range" id="slider-noise-thresh" class="range-slider" min="0.005" max="0.05" step="0.001" value="0.015" oninput="updateReceiverSettings()">
+          </div>
+
+          <div class="control-item">
+            <div class="control-label">
+              <span>Confiabilidad YIN:</span>
+              <span id="val-confidence" class="control-val">88%</span>
+            </div>
+            <input type="range" id="slider-confidence" class="range-slider" min="0.75" max="0.95" step="0.01" value="0.88" oninput="updateReceiverSettings()">
+          </div>
+
+          <div class="control-item">
+            <div class="control-label">
+              <span>Cuadros Estables:</span>
+              <span id="val-stable-frames" class="control-val">4</span>
+            </div>
+            <input type="range" id="slider-stable-frames" class="range-slider" min="2" max="6" step="1" value="4" oninput="updateReceiverSettings()">
+          </div>
+
+          <div class="control-item">
+            <div class="control-label">
+              <span>Tolerancia Afinación:</span>
+              <span id="val-tuning-cents" class="control-val">&plusmn;45c</span>
+            </div>
+            <input type="range" id="slider-tuning-cents" class="range-slider" min="20" max="50" step="5" value="45" oninput="updateReceiverSettings()">
+          </div>
+
+          <div class="control-item">
+            <div class="control-label">
+              <span>Pausa Fin Secuencia:</span>
+              <span id="val-silence-timeout" class="control-val">2.2s</span>
+            </div>
+            <input type="range" id="slider-silence-timeout" class="range-slider" min="1.0" max="4.0" step="0.2" value="2.2" oninput="updateReceiverSettings()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid: Monitor Osciloscopio & Métricas en Vivo -->
+      <div class="grid-2col">
+        <!-- Osciloscopio en Tiempo Real -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan)"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              <h3 class="card-title">Osciloscopio (Dominio del Tiempo 2048 pts)</h3>
+            </div>
+            <span id="oscillo-status-pill" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-sub)">EN ESPERA</span>
+          </div>
+
+          <div class="canvas-container" style="height:260px;">
+            <canvas id="oscillo-canvas" style="height:260px;"></canvas>
+          </div>
+
+          <!-- Consola Ticker -->
+          <div class="console-ticker">
+            <div style="display:flex; align-items:center; gap:0.5rem; overflow:hidden;">
+              <span style="color:var(--accent-cyan); font-weight:700;">&gt;</span>
+              <span id="raw-debug-ticker" style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">Micrófono detenido. Esperando inicio...</span>
+            </div>
+            <span style="font-size:0.68rem; color:var(--text-sub); flex-shrink:0;">150Hz - 2200Hz</span>
+          </div>
+        </div>
+
+        <!-- Métricas en Vivo y Vúmetro -->
+        <div class="card" style="display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div class="card-header">
+              <div class="card-title-group">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-emerald)"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                <h3 class="card-title">Métricas Acústicas en Directo</h3>
+              </div>
+              <span id="live-confidence-badge" style="font-family:var(--font-mono); font-size:0.72rem; color:var(--accent-cyan); background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:6px; border:1px solid rgba(6,182,212,0.3)">Conf: 0%</span>
+            </div>
+
+            <!-- Frecuencia y Nota -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-bottom:1.15rem;">
+              <div style="background:#030514; border:1px solid rgba(99,102,241,0.25); border-radius:12px; padding:0.85rem; text-align:center;">
+                <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted);">FRECUENCIA FUNDAMENTAL</div>
+                <div id="live-freq-val" style="font-family:var(--font-mono); font-size:1.6rem; font-weight:700; color:#38bdf8; margin-top:0.2rem;">--- Hz</div>
+              </div>
+              <div style="background:#030514; border:1px solid rgba(99,102,241,0.25); border-radius:12px; padding:0.85rem; text-align:center;">
+                <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted);">NOTA & MIDI</div>
+                <div id="live-note-val" style="font-family:var(--font-mono); font-size:1.6rem; font-weight:700; color:#34d399; margin-top:0.2rem;">---</div>
+              </div>
+            </div>
+
+            <!-- Vúmetro LED Segmentado -->
+            <div style="background:#030514; border:1px solid rgba(99,102,241,0.25); border-radius:12px; padding:0.85rem;">
+              <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.72rem;">
+                <span style="color:var(--text-muted);">Vúmetro Entrada (RMS):</span>
+                <span id="live-rms-val" style="color:#38bdf8; font-weight:600;">0.0%</span>
+              </div>
+              <div id="vu-meter" class="vu-meter-grid">
+                <div class="vu-segment"></div><div class="vu-segment"></div><div class="vu-segment"></div>
+                <div class="vu-segment"></div><div class="vu-segment"></div><div class="vu-segment"></div>
+                <div class="vu-segment"></div><div class="vu-segment"></div><div class="vu-segment"></div>
+                <div class="vu-segment"></div><div class="vu-segment"></div><div class="vu-segment"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.65rem; color:var(--text-sub); margin-top:4px;">
+                <span>0%</span>
+                <span style="color:#f43f5e">Umbral Silencio (1.5%)</span>
+                <span>10%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Letra Detectada Instantánea -->
+          <div style="background:#030514; border:1px solid rgba(99,102,241,0.25); border-radius:12px; padding:0.85rem; text-align:center; margin-top:1rem;">
+            <span style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted);">CARÁCTER ACTIVO CAPTADO</span>
+            <div id="live-char-banner" style="font-family:var(--font-display); font-size:2rem; font-weight:700; color:#fff; text-shadow:0 0 14px rgba(56,189,248,0.5);">&mdash;</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tira de Caracteres Decodificados Progresivamente -->
+      <div class="card" style="margin-top:1.5rem;">
+        <div class="card-header">
+          <div class="card-title-group">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan)"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" x2="15" y1="20" y2="20"></line><line x1="12" x2="12" y1="4" y2="20"></line></svg>
+            <h3 class="card-title">Secuencia de Letras Decodificadas en Vivo</h3>
+          </div>
+          <span id="decoded-count-badge" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-cyan)">0 notas registradas</span>
+        </div>
+
+        <div id="decoded-letters-ribbon" class="letter-ribbon" style="min-height:90px; align-items:center;">
+          <div id="empty-ribbon-msg" style="font-family:var(--font-mono); font-size:0.8rem; color:var(--text-sub); width:100%; text-align:center; padding:1.5rem 0;">
+            Aún no se han capturado notas. Activa el micrófono y reproduce la señal sonora.
+          </div>
+        </div>
+      </div>
+
+      <!-- Anuncio de Palabra Reconstruida Final -->
+      <div id="reconstructed-card" class="word-reconstructed-banner" style="display:none;">
+        <div style="font-family:var(--font-mono); font-size:0.85rem; color:var(--accent-emerald); font-weight:600; text-transform:uppercase; letter-spacing:0.1em;">
+          &bull; &iexcl;Secuencia Ac&uacute;stica Reconstruida con &Eacute;xito! &bull;
+        </div>
+        <div id="reconstructed-word-display" class="reconstructed-title">ALDEBARAN</div>
+        <p style="font-family:var(--font-mono); font-size:0.8rem; color:var(--text-muted); margin-bottom:1.25rem;">
+          Todas las notas fueron recibidas, verificadas por afinación estricta y convertidas a caracteres ASCII.
+        </p>
+        <div style="display:flex; justify-content:center; gap:0.75rem; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="copyReconstructedWord()">Copiar Palabra</button>
+          <button class="btn btn-success" onclick="loadReconstructedIntoEmitter()">Cargar en Modo Emisor</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- PIE DE PÁGINA -->
+  <footer>
+    <div style="max-width:1380px; margin:0 auto; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem;">
+      <span>AstroFirma Sonora &bull; Aplicación Estática Pura (Sin Dependencias Externas)</span>
+      <span>Web Audio API &bull; Polinomios de Lagrange &bull; Algoritmo YIN / Autocorrelación</span>
+    </div>
+  </footer>
+
+  <!-- ==========================================================================
+       LÓGICA EN JAVASCRIPT VANILLA AUTOCONTENIDA
+       ========================================================================== -->
+  <script>
+    /* ==========================================================================
+       ESTADO GLOBAL DE LA APLICACIÓN
+       ========================================================================== */
+    const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+    // Estado del Emisor
+    const emitterState = {
+      word: 'ALDEBARAN',
+      points: [],
+      isPlaying: false,
+      currentPlayingIndex: -1,
+      synthWave: 'sine',
+      noteDurationMs: 280,
+      volume: 0.75,
+      pitchShift: 0,
+      curveType: 'lagrange',
+      audioTimerId: null
+    };
+
+    // Estado del Receptor (Decodificador por micrófono)
+    const receiverState = {
+      isListening: false,
+      audioContext: null,
+      analyser: null,
+      mediaStream: null,
+      animationFrameId: null,
+      noiseThreshold: 0.015,
+      minConfidence: 0.88,
+      minStableFrames: 4,
+      tuningToleranceCents: 45,
+      silenceTimeoutSec: 2.2,
+      decodedPoints: [],
+      reconstructedWord: '',
+      isSequenceCompleted: false,
+      // Variables internas de seguimiento en el bucle
+      candidateMidi: null,
+      candidateCount: 0,
+      candidateFreq: 0,
+      candidateCentsOff: 0,
+      lastRegisteredMidi: null,
+      hasDroppedBelowRmsSinceLastNote: true,
+      silenceStartTime: null,
+      hasLettersSinceStart: false
+    };
+
+    let sharedAudioCtx = null;
+
+    function getAudioContext() {
+      if (!sharedAudioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        sharedAudioCtx = new AudioCtx();
+      }
+      if (sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume();
+      }
+      return sharedAudioCtx;
+    }
+
+    /* ==========================================================================
+       UTILIDADES MATEMÁTICAS & CONVERSIONES
+       ========================================================================== */
+    function midiToNoteName(midi) {
+      const rounded = Math.round(midi);
+      const noteIndex = ((rounded % 12) + 12) % 12;
+      const octave = Math.floor(rounded / 12) - 1;
+      return `${NOTE_NAMES[noteIndex]}${octave}`;
+    }
+
+    function midiToFrequency(midi) {
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function getAsciiCode(char) {
+      const code = char.charCodeAt(0);
+      if (code >= 32 && code <= 126) return code;
+      const norm = char.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (norm.length > 0) {
+        const nCode = norm.charCodeAt(0);
+        if (nCode >= 32 && nCode <= 126) return nCode;
+      }
+      return code <= 127 ? code : 65 + (code % 26);
+    }
+
+    function parseWordToPoints(word) {
+      const sanitized = (word && word.length > 0 ? word : 'ALTAIR').slice(0, 32);
+      const chars = Array.from(sanitized);
+      return chars.map((char, index) => {
+        const ascii = getAsciiCode(char);
+        const midi = ascii;
+        const freq = midiToFrequency(midi);
+        return {
+          index: index + 1, // x de 1 a N
+          char,
+          ascii,
+          midiNote: midi,
+          noteName: midiToNoteName(midi),
+          frequency: freq
+        };
+      });
+    }
+
+    // Polinomio de Lagrange P(x) = sum(yi * li(x))
+    function evaluateLagrange(points, x) {
+      const n = points.length;
+      if (n === 0) return 0;
+      if (n === 1) return points[0].ascii;
+
+      let result = 0;
+      for (let i = 0; i < n; i++) {
+        const xi = points[i].index;
+        const yi = points[i].ascii;
+        let term = yi;
+        for (let j = 0; j < n; j++) {
+          if (i !== j) {
+            const xj = points[j].index;
+            term *= (x - xj) / (xi - xj);
+          }
+        }
+        result += term;
+      }
+      return result;
+    }
+
+    // Spline Cúbica Natural o Catmull-Rom para estabilidad visual en palabras largas
+    function evaluateCatmullRom(points, x) {
+      const n = points.length;
+      if (n <= 1) return evaluateLagrange(points, x);
+      if (x <= points[0].index) return points[0].ascii;
+      if (x >= points[n - 1].index) return points[n - 1].ascii;
+
+      // Encuentra segmento
+      let i = 0;
+      while (i < n - 1 && points[i + 1].index < x) {
+        i++;
+      }
+
+      const p0 = i > 0 ? points[i - 1].ascii : points[0].ascii;
+      const p1 = points[i].ascii;
+      const p2 = points[i + 1].ascii;
+      const p3 = i < n - 2 ? points[i + 2].ascii : p2;
+
+      const t = (x - points[i].index) / (points[i + 1].index - points[i].index);
+      const t2 = t * t;
+      const t3 = t2 * t;
+
+      return 0.5 * (
+        (2 * p1) +
+        (-p0 + p2) * t +
+        (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+        (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+      );
+    }
+
+    /* ==========================================================================
+       GESTIÓN DE PESTAÑAS (VISTAS)
+       ========================================================================== */
+    function switchView(view) {
+      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+      if (view === 'emitter') {
+        document.getElementById('view-emitter').classList.add('active');
+        document.getElementById('tab-btn-emitter').classList.add('active');
+        renderCartesianCanvas();
+      } else {
+        document.getElementById('view-receiver').classList.add('active');
+        document.getElementById('tab-btn-receiver').classList.add('active');
+      }
+    }
+
+    /* ==========================================================================
+       MODO EMISOR: CINTA, AUDIO Y CANVAS
+       ========================================================================== */
+    function applyInputWord() {
+      const input = document.getElementById('word-input');
+      let val = input.value.trim().toUpperCase();
+      if (!val) val = 'ALDEBARAN';
+      emitterState.word = val;
+      updateEmitterUI();
+    }
+
+    function setPreset(word) {
+      document.getElementById('word-input').value = word;
+      emitterState.word = word;
+      updateEmitterUI();
+    }
+
+    function updateEmitterUI() {
+      emitterState.points = parseWordToPoints(emitterState.word);
+      document.getElementById('char-counter').innerText = `${emitterState.points.length} caracteres`;
+
+      // Rango de frecuencias
+      if (emitterState.points.length > 0) {
+        const freqs = emitterState.points.map(p => p.frequency);
+        const minF = Math.min(...freqs).toFixed(1);
+        const maxF = Math.max(...freqs).toFixed(1);
+        document.getElementById('freq-range-label').innerText = `${minF} Hz - ${maxF} Hz`;
+      }
+
+      // Renderizar Cinta de Letras
+      const ribbon = document.getElementById('letter-ribbon');
+      ribbon.innerHTML = '';
+      emitterState.points.forEach((p, idx) => {
+        const card = document.createElement('div');
+        card.className = 'letter-card';
+        card.id = `emitter-card-${idx}`;
+        card.onclick = () => playSingleNote(p.midiNote, idx);
+        card.innerHTML = `
+          <div class="letter-char">${p.char}</div>
+          <div class="letter-note">${p.noteName}</div>
+          <div class="letter-meta">${p.frequency.toFixed(0)} Hz &bull; #${p.ascii}</div>
+        `;
+        ribbon.appendChild(card);
+      });
+
+      // Renderizar Fórmula
+      renderLagrangeFormula();
+
+      // Renderizar Gráfica
+      renderCartesianCanvas();
+    }
+
+    function updateSynthParams() {
+      emitterState.synthWave = document.getElementById('synth-wave').value;
+      emitterState.noteDurationMs = parseInt(document.getElementById('slider-note-duration').value, 10);
+      emitterState.volume = parseInt(document.getElementById('slider-volume').value, 10) / 100;
+      emitterState.pitchShift = parseInt(document.getElementById('slider-octave').value, 10);
+
+      document.getElementById('val-note-duration').innerText = `${emitterState.noteDurationMs} ms`;
+      document.getElementById('val-volume').innerText = `${Math.round(emitterState.volume * 100)}%`;
+      document.getElementById('val-octave').innerText = emitterState.pitchShift > 0 ? `+${emitterState.pitchShift}` : emitterState.pitchShift;
+    }
+
+    // Síntesis de Audio para una Nota
+    function playSingleNote(midi, noteIndex = -1) {
+      const ctx = getAudioContext();
+      const shiftedMidi = midi + emitterState.pitchShift;
+      const freq = midiToFrequency(shiftedMidi);
+      const durationSec = emitterState.noteDurationMs / 1000;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = emitterState.synthWave;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+      // Envolvente ADSR suave para evitar clics
+      const attack = 0.012;
+      const decay = 0.05;
+      const sustain = 0.65;
+      const release = Math.max(0.04, durationSec * 0.25);
+
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(emitterState.volume, ctx.currentTime + attack);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, emitterState.volume * sustain), ctx.currentTime + attack + decay);
+      gain.gain.setValueAtTime(emitterState.volume * sustain, ctx.currentTime + durationSec);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationSec + release);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + durationSec + release + 0.02);
+
+      // Resaltar tarjeta visual
+      if (noteIndex >= 0) {
+        document.querySelectorAll('.letter-card').forEach(c => c.classList.remove('playing'));
+        const el = document.getElementById(`emitter-card-${noteIndex}`);
+        if (el) {
+          el.classList.add('playing');
+          setTimeout(() => el.classList.remove('playing'), emitterState.noteDurationMs);
+        }
+      }
+    }
+
+    // Reproducción secuencial de la palabra
+    function togglePlayAudio() {
+      if (emitterState.isPlaying) {
+        stopAudio();
+      } else {
+        startSequencePlayback();
+      }
+    }
+
+    function startSequencePlayback() {
+      if (emitterState.points.length === 0) return;
+      emitterState.isPlaying = true;
+      document.getElementById('btn-play').innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+        Pausar
+      `;
+
+      let currentIndex = 0;
+      const stepTime = emitterState.noteDurationMs + 40; // pequeño silencio entre notas
+
+      function playStep() {
+        if (!emitterState.isPlaying) return;
+        if (currentIndex >= emitterState.points.length) {
+          stopAudio();
+          return;
+        }
+
+        const point = emitterState.points[currentIndex];
+        emitterState.currentPlayingIndex = currentIndex;
+        playSingleNote(point.midiNote, currentIndex);
+        renderCartesianCanvas();
+
+        currentIndex++;
+        emitterState.audioTimerId = setTimeout(playStep, stepTime);
+      }
+
+      playStep();
+    }
+
+    function stopAudio() {
+      emitterState.isPlaying = false;
+      emitterState.currentPlayingIndex = -1;
+      if (emitterState.audioTimerId) {
+        clearTimeout(emitterState.audioTimerId);
+        emitterState.audioTimerId = null;
+      }
+      document.getElementById('btn-play').innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        Reproducir
+      `;
+      document.querySelectorAll('.letter-card').forEach(c => c.classList.remove('playing'));
+      renderCartesianCanvas();
+    }
+
+    // Exportación a archivo WAV (16-bit PCM estéreo)
+    async function exportWavFile() {
+      const points = emitterState.points;
+      if (points.length === 0) return;
+
+      const sampleRate = 44100;
+      const stepSec = (emitterState.noteDurationMs + 40) / 1000;
+      const totalDuration = points.length * stepSec + 0.5;
+      const totalSamples = Math.ceil(totalDuration * sampleRate);
+
+      const offlineCtx = new OfflineAudioContext(2, totalSamples, sampleRate);
+
+      points.forEach((p, idx) => {
+        const startTime = idx * stepSec;
+        const noteDuration = emitterState.noteDurationMs / 1000;
+        const shiftedMidi = p.midiNote + emitterState.pitchShift;
+        const freq = midiToFrequency(shiftedMidi);
+
+        const osc = offlineCtx.createOscillator();
+        const gain = offlineCtx.createGain();
+
+        osc.type = emitterState.synthWave;
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(emitterState.volume, startTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, emitterState.volume * 0.7), startTime + 0.05);
+        gain.gain.setValueAtTime(emitterState.volume * 0.7, startTime + noteDuration);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + noteDuration + 0.1);
+
+        osc.connect(gain);
+        gain.connect(offlineCtx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + noteDuration + 0.12);
+      });
+
+      const renderedBuffer = await offlineCtx.startRendering();
+      const wavBlob = audioBufferToWavBlob(renderedBuffer);
+
+      // Descarga automática
+      const cleanName = emitterState.word.replace(/[^A-Z0-9_-]/g, '_');
+      const filename = `AstroFirma_${cleanName}.wav`;
+      const url = URL.createObjectURL(wavBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    function audioBufferToWavBlob(buffer) {
+      const numChannels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const numSamples = buffer.length;
+      const blockAlign = numChannels * 2;
+      const dataSize = numSamples * blockAlign;
+      const totalSize = 44 + dataSize;
+
+      const arrayBuffer = new ArrayBuffer(totalSize);
+      const view = new DataView(arrayBuffer);
+
+      const writeString = (offset, str) => {
+        for (let i = 0; i < str.length; i++) {
+          view.setUint8(offset + i, str.charCodeAt(i));
+        }
+      };
+
+      writeString(0, 'RIFF');
+      view.setUint32(4, totalSize - 8, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * blockAlign, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, 16, true); // 16-bit
+      writeString(36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      let offset = 44;
+      for (let i = 0; i < numSamples; i++) {
+        for (let c = 0; c < numChannels; c++) {
+          let s = buffer.getChannelData(c)[i];
+          s = Math.max(-1, Math.min(1, s));
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+          offset += 2;
+        }
+      }
+
+      return new Blob([arrayBuffer], { type: 'audio/wav' });
+    }
+
+    // Renderizar Fórmula de Lagrange
+    function renderLagrangeFormula() {
+      const container = document.getElementById('math-formula-container');
+      const points = emitterState.points;
+      if (points.length === 0) {
+        container.innerHTML = 'Sin datos';
+        return;
+      }
+
+      let html = `<div style="color:#e2e8f0; font-weight:700; margin-bottom:0.4rem;">Polinomio Interpolador P(x):</div>`;
+      html += `P(x) = &sum;<sub>i=1</sub><sup>${points.length}</sup> y<sub>i</sub> &sdot; &ell;<sub>i</sub>(x)<br><br>`;
+      html += `<div style="color:var(--accent-cyan); font-weight:600;">Valores Discretos (xi, yi):</div>`;
+      html += points.map(p => `(${p.index}, ${p.ascii}) ['${p.char}'] &rarr; ${p.frequency.toFixed(1)} Hz`).join(' &bull; ');
+
+      html += `<br><br><div style="color:var(--text-muted); font-size:0.75rem;">Cada letra corresponde a su valor ASCII exacto y genera una frecuencia fundamental afinada en escala temperada MIDI.</div>`;
+      container.innerHTML = html;
+    }
+
+    function copyFormula() {
+      const text = document.getElementById('math-formula-container').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Fórmula matemática copiada al portapapeles');
+      });
+    }
+
+    // Renderizar Plano Cartesiano en Canvas
+    function renderCartesianCanvas() {
+      const canvas = document.getElementById('cartesian-canvas');
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const w = rect.width;
+      const h = rect.height;
+
+      // Fondo estelar profundo
+      ctx.fillStyle = '#030514';
+      ctx.fillRect(0, 0, w, h);
+
+      const points = emitterState.points;
+      if (points.length === 0) return;
+
+      const padding = { top: 40, right: 40, bottom: 50, left: 65 };
+      const plotW = w - padding.left - padding.right;
+      const plotH = h - padding.top - padding.bottom;
+
+      // Rangos
+      const minX = 0.5;
+      const maxX = Math.max(points.length + 0.5, 4);
+      const asciiValues = points.map(p => p.ascii);
+      const minY = Math.min(30, Math.min(...asciiValues) - 10);
+      const maxY = Math.max(125, Math.max(...asciiValues) + 15);
+
+      const toCanvasX = (x) => padding.left + ((x - minX) / (maxX - minX)) * plotW;
+      const toCanvasY = (y) => padding.top + plotH - ((y - minY) / (maxY - minY)) * plotH;
+
+      // Cuadrícula y Ejes
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.12)';
+      ctx.lineWidth = 1;
+
+      // Líneas horizontales (Y)
+      ctx.fillStyle = '#64748b';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      const yStep = 20;
+      for (let y = Math.ceil(minY / yStep) * yStep; y <= maxY; y += yStep) {
+        const cy = toCanvasY(y);
+        ctx.beginPath();
+        ctx.moveTo(padding.left, cy);
+        ctx.lineTo(w - padding.right, cy);
+        ctx.stroke();
+        ctx.fillText(y.toString(), padding.left - 10, cy);
+      }
+
+      // Líneas verticales (X)
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let x = 1; x <= points.length; x++) {
+        const cx = toCanvasX(x);
+        ctx.beginPath();
+        ctx.moveTo(cx, padding.top);
+        ctx.lineTo(cx, h - padding.bottom);
+        ctx.stroke();
+        ctx.fillText(`x=${x}`, cx, h - padding.bottom + 8);
+      }
+
+      // Ejes principales
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, padding.top);
+      ctx.lineTo(padding.left, h - padding.bottom);
+      ctx.lineTo(w - padding.right, h - padding.bottom);
+      ctx.stroke();
+
+      // Curva Continua
+      const curveType = document.getElementById('select-curve-type').value;
+      const numSteps = 300;
+      const stepX = (maxX - minX) / numSteps;
+
+      ctx.beginPath();
+      let first = true;
+      for (let i = 0; i <= numSteps; i++) {
+        const x = minX + i * stepX;
+        let y = 0;
+        if (curveType === 'lagrange') {
+          y = evaluateLagrange(points, x);
+        } else if (curveType === 'spline') {
+          y = evaluateCatmullRom(points, x);
+        } else {
+          // lineal
+          if (x <= points[0].index) y = points[0].ascii;
+          else if (x >= points[points.length - 1].index) y = points[points.length - 1].ascii;
+          else {
+            let seg = 0;
+            while (seg < points.length - 1 && points[seg + 1].index < x) seg++;
+            const t = (x - points[seg].index) / (points[seg + 1].index - points[seg].index);
+            y = points[seg].ascii + t * (points[seg + 1].ascii - points[seg].ascii);
+          }
+        }
+
+        // Clamp y visual
+        const cy = Math.max(padding.top - 20, Math.min(h - padding.bottom + 20, toCanvasY(y)));
+        const cx = toCanvasX(x);
+
+        if (first) {
+          ctx.moveTo(cx, cy);
+          first = false;
+        } else {
+          ctx.lineTo(cx, cy);
+        }
+      }
+
+      // Estilo de la curva con halo brillante
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(99, 102, 241, 0.6)';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Puntos Discretos (xi, yi)
+      points.forEach((p, idx) => {
+        const cx = toCanvasX(p.index);
+        const cy = toCanvasY(p.ascii);
+        const isCurrent = (idx === emitterState.currentPlayingIndex);
+
+        // Halo exterior
+        ctx.beginPath();
+        ctx.arc(cx, cy, isCurrent ? 12 : 7, 0, Math.PI * 2);
+        ctx.fillStyle = isCurrent ? 'rgba(52, 211, 153, 0.4)' : 'rgba(56, 189, 248, 0.3)';
+        ctx.fill();
+
+        // Punto central
+        ctx.beginPath();
+        ctx.arc(cx, cy, isCurrent ? 6 : 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = isCurrent ? '#34d399' : '#38bdf8';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Letra arriba del punto
+        ctx.font = 'bold 12px "JetBrains Mono", monospace';
+        ctx.fillStyle = isCurrent ? '#34d399' : '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${p.char} (${p.ascii})`, cx, cy - 14);
+      });
+    }
+
+    /* ==========================================================================
+       MODO RECEPTOR: DECODIFICADOR ACÚSTICO POR MICRÓFONO
+       ========================================================================== */
+    function toggleReceiverSettings() {
+      const card = document.getElementById('receiver-settings-card');
+      card.style.display = (card.style.display === 'none' || card.style.display === '') ? 'block' : 'none';
+    }
+
+    function updateReceiverSettings() {
+      receiverState.noiseThreshold = parseFloat(document.getElementById('slider-noise-thresh').value);
+      receiverState.minConfidence = parseFloat(document.getElementById('slider-confidence').value);
+      receiverState.minStableFrames = parseInt(document.getElementById('slider-stable-frames').value, 10);
+      receiverState.tuningToleranceCents = parseInt(document.getElementById('slider-tuning-cents').value, 10);
+      receiverState.silenceTimeoutSec = parseFloat(document.getElementById('slider-silence-timeout').value);
+
+      document.getElementById('val-noise-thresh').innerText = `${(receiverState.noiseThreshold * 100).toFixed(1)}%`;
+      document.getElementById('val-confidence').innerText = `${Math.round(receiverState.minConfidence * 100)}%`;
+      document.getElementById('val-stable-frames').innerText = receiverState.minStableFrames;
+      document.getElementById('val-tuning-cents').innerText = `\u00B1${receiverState.tuningToleranceCents}c`;
+      document.getElementById('val-silence-timeout').innerText = `${receiverState.silenceTimeoutSec.toFixed(1)}s`;
+    }
+
+    // Alternar activación del micrófono
+    async function toggleMicrophone() {
+      if (receiverState.isListening) {
+        stopMicrophone();
+      } else {
+        await startMicrophone();
+      }
+    }
+
+    async function startMicrophone() {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert('Tu navegador no soporta captura de micrófono con getUserMedia.');
+          return;
+        }
+
+        // Solicitar micrófono sin procesamiento para conservar pureza del sintetizador
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+
+        receiverState.mediaStream = stream;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        receiverState.audioContext = audioCtx;
+
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0;
+        receiverState.analyser = analyser;
+
+        source.connect(analyser);
+
+        receiverState.isListening = true;
+        document.getElementById('mic-pulse-dot').className = 'pulse-dot listening';
+        document.getElementById('mic-status-title').innerText = 'Micrófono activo y calibrado';
+        document.getElementById('mic-status-desc').innerText = 'Esperando señal acústica pura...';
+        document.getElementById('btn-toggle-listen').innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"></rect></svg>
+          Detener Escucha
+        `;
+        document.getElementById('btn-toggle-listen').className = 'btn btn-danger';
+        document.getElementById('oscillo-status-pill').innerText = 'ESCUCHANDO';
+
+        // Iniciar bucle de análisis
+        startAudioAnalysisLoop(analyser, audioCtx.sampleRate);
+      } catch (err) {
+        console.error('Error al iniciar micrófono:', err);
+        alert('No se pudo acceder al micrófono: ' + err.message);
+      }
+    }
+
+    function stopMicrophone() {
+      receiverState.isListening = false;
+      if (receiverState.animationFrameId) {
+        cancelAnimationFrame(receiverState.animationFrameId);
+        receiverState.animationFrameId = null;
+      }
+      if (receiverState.mediaStream) {
+        receiverState.mediaStream.getTracks().forEach(t => t.stop());
+        receiverState.mediaStream = null;
+      }
+      if (receiverState.audioContext) {
+        receiverState.audioContext.close();
+        receiverState.audioContext = null;
+      }
+
+      document.getElementById('mic-pulse-dot').className = 'pulse-dot';
+      document.getElementById('mic-status-title').innerText = 'Micrófono detenido';
+      document.getElementById('mic-status-desc').innerText = 'Presiona "Comenzar a Escuchar" para activar la captura.';
+      document.getElementById('btn-toggle-listen').innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+        Comenzar a Escuchar
+      `;
+      document.getElementById('btn-toggle-listen').className = 'btn btn-primary';
+      document.getElementById('oscillo-status-pill').innerText = 'EN ESPERA';
+      document.getElementById('live-freq-val').innerText = '--- Hz';
+      document.getElementById('live-note-val').innerText = '---';
+      document.getElementById('live-char-banner').innerText = '\u2014';
+      document.getElementById('live-confidence-badge').innerText = 'Conf: 0%';
+      updateVuMeter(0);
+    }
+
+    function resetReceiver() {
+      receiverState.decodedPoints = [];
+      receiverState.reconstructedWord = '';
+      receiverState.candidateMidi = null;
+      receiverState.candidateCount = 0;
+      receiverState.lastRegisteredMidi = null;
+      receiverState.hasDroppedBelowRmsSinceLastNote = true;
+      receiverState.silenceStartTime = null;
+      receiverState.hasLettersSinceStart = false;
+
+      document.getElementById('decoded-count-badge').innerText = '0 notas registradas';
+      document.getElementById('decoded-letters-ribbon').innerHTML = `
+        <div id="empty-ribbon-msg" style="font-family:var(--font-mono); font-size:0.8rem; color:var(--text-sub); width:100%; text-align:center; padding:1.5rem 0;">
+          Aún no se han capturado notas. Activa el micrófono y reproduce la señal sonora.
+        </div>
+      `;
+      document.getElementById('reconstructed-card').style.display = 'none';
+      document.getElementById('raw-debug-ticker').innerText = 'Receptor reiniciado. Esperando tonos...';
+    }
+
+    // Algoritmo YIN / Diferencia Cuadrática Normalizada (NSDF)
+    function detectPitchYin(buffer, sampleRate, thresholdRms, confidenceThreshold) {
+      const bufferLength = buffer.length;
+
+      // 1. Cálculo RMS
+      let sumSquares = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        sumSquares += buffer[i] * buffer[i];
+      }
+      const rms = Math.sqrt(sumSquares / bufferLength);
+
+      if (rms < thresholdRms) {
+        return { freq: null, rms, confidence: 0 };
+      }
+
+      // 2. Límites de Lag para rango 150 Hz a 2200 Hz
+      const minLag = Math.floor(sampleRate / 2200);
+      const maxLag = Math.ceil(sampleRate / 150);
+
+      if (maxLag >= bufferLength - 2) {
+        return { freq: null, rms, confidence: 0 };
+      }
+
+      // 3. NSDF
+      const W = bufferLength - maxLag;
+      let m0 = 0;
+      for (let j = 0; j < W; j++) {
+        m0 += buffer[j] * buffer[j];
+      }
+      if (m0 < 0.00001) return { freq: null, rms, confidence: 0 };
+
+      const term2 = new Float32Array(maxLag + 2);
+      term2[0] = m0;
+      for (let tau = 1; tau <= maxLag + 1; tau++) {
+        term2[tau] = term2[tau - 1] - buffer[tau - 1] * buffer[tau - 1] + buffer[tau - 1 + W] * buffer[tau - 1 + W];
+      }
+
+      const nsdf = new Float32Array(maxLag + 2);
+      for (let tau = minLag - 1; tau <= maxLag + 1; tau++) {
+        let r = 0;
+        for (let j = 0; j < W; j++) {
+          r += buffer[j] * buffer[j + tau];
+        }
+        const m = m0 + term2[tau];
+        nsdf[tau] = m > 0.00001 ? (2 * r) / m : 0;
+      }
+
+      // 4. Búsqueda de picos locales
+      const peaks = [];
+      let maxPeakVal = -1;
+      for (let tau = minLag; tau <= maxLag; tau++) {
+        const val = nsdf[tau];
+        if (val > nsdf[tau - 1] && val >= nsdf[tau + 1] && val > 0) {
+          peaks.push({ lag: tau, val });
+          if (val > maxPeakVal) maxPeakVal = val;
+        }
+      }
+
+      if (peaks.length === 0 || maxPeakVal < confidenceThreshold) {
+        return { freq: null, rms, confidence: Math.max(0, maxPeakVal) };
+      }
+
+      // Primer pico significativo >= 0.85 * maxPeakVal para evitar saltos de octava
+      const cutoff = Math.max(confidenceThreshold, maxPeakVal * 0.85);
+      let bestPeak = peaks[0];
+      for (let i = 0; i < peaks.length; i++) {
+        if (peaks[i].val >= cutoff) {
+          bestPeak = peaks[i];
+          break;
+        }
+      }
+
+      // 5. Interpolación Parabólica
+      const bestLag = bestPeak.lag;
+      const y1 = nsdf[bestLag - 1];
+      const y2 = nsdf[bestLag];
+      const y3 = nsdf[bestLag + 1];
+
+      const denom = 2 * (2 * y2 - y1 - y3);
+      let delta = 0;
+      if (Math.abs(denom) > 1e-6) {
+        delta = (y3 - y1) / denom;
+      }
+      delta = Math.max(-0.5, Math.min(0.5, delta));
+      const refinedLag = bestLag + delta;
+      const fundamentalFreq = sampleRate / refinedLag;
+
+      if (fundamentalFreq < 150 || fundamentalFreq > 2200) {
+        return { freq: null, rms, confidence: bestPeak.val };
+      }
+
+      return { freq: fundamentalFreq, rms, confidence: bestPeak.val };
+    }
+
+    // Bucle Principal de Escucha Acústica
+    function startAudioAnalysisLoop(analyser, sampleRate) {
+      const bufferLength = analyser.fftSize;
+      const timeDomainBuffer = new Float32Array(bufferLength);
+      const canvas = document.getElementById('oscillo-canvas');
+      const ctx = canvas.getContext('2d');
+
+      let frameCounter = 0;
+
+      function renderLoop() {
+        if (!receiverState.isListening) return;
+
+        receiverState.animationFrameId = requestAnimationFrame(renderLoop);
+        frameCounter++;
+
+        analyser.getFloatTimeDomainData(timeDomainBuffer);
+
+        const { noiseThreshold, minConfidence, minStableFrames, tuningToleranceCents, silenceTimeoutSec } = receiverState;
+        const { freq, rms, confidence } = detectPitchYin(timeDomainBuffer, sampleRate, noiseThreshold, minConfidence);
+
+        const now = performance.now();
+
+        // Actualizar Vúmetro
+        updateVuMeter(rms);
+        document.getElementById('live-rms-val').innerText = `${(rms * 100).toFixed(1)}%`;
+
+        if (freq && freq >= 150 && freq <= 2200) {
+          receiverState.silenceStartTime = null;
+
+          // Conversión a MIDI
+          const exactMidi = 69 + 12 * Math.log2(freq / 440);
+          const roundedMidi = Math.round(exactMidi);
+          const centsOff = (exactMidi - roundedMidi) * 100;
+
+          if (Math.abs(centsOff) <= tuningToleranceCents && roundedMidi >= 32 && roundedMidi <= 126) {
+            const noteName = midiToNoteName(roundedMidi);
+            const char = String.fromCharCode(roundedMidi);
+
+            document.getElementById('live-freq-val').innerText = `${freq.toFixed(1)} Hz`;
+            document.getElementById('live-note-val').innerText = `${noteName} (#${roundedMidi})`;
+            document.getElementById('live-char-banner').innerText = `'${char}'`;
+            document.getElementById('live-confidence-badge').innerText = `Conf: ${Math.round(confidence * 100)}%`;
+            document.getElementById('raw-debug-ticker').innerText = `Detectando: ${freq.toFixed(1)} Hz -> MIDI: ${roundedMidi} -> '${char}' (Conf: ${Math.round(confidence * 100)}%)`;
+
+            // Verificación de estabilidad por cuadros consecutivos
+            if (receiverState.candidateMidi === roundedMidi) {
+              receiverState.candidateCount++;
+            } else {
+              receiverState.candidateMidi = roundedMidi;
+              receiverState.candidateCount = 1;
+              receiverState.candidateFreq = freq;
+              receiverState.candidateCentsOff = centsOff;
+            }
+
+            if (receiverState.candidateCount >= minStableFrames) {
+              const isSameAsLast = (receiverState.lastRegisteredMidi === roundedMidi);
+              if (!isSameAsLast || receiverState.hasDroppedBelowRmsSinceLastNote) {
+                receiverState.lastRegisteredMidi = roundedMidi;
+                receiverState.hasDroppedBelowRmsSinceLastNote = false;
+                receiverState.hasLettersSinceStart = true;
+                receiverState.candidateCount = -9999; // evita registrar mientras continúe el tono continuo
+
+                registerDecodedLetter(roundedMidi, freq, centsOff);
+              }
+            }
+          }
+        } else {
+          // Silencio o sin periodicidad
+          receiverState.candidateMidi = null;
+          receiverState.candidateCount = 0;
+
+          if (rms < noiseThreshold) {
+            receiverState.hasDroppedBelowRmsSinceLastNote = true;
+          }
+
+          if (frameCounter % 6 === 0) {
+            document.getElementById('live-freq-val').innerText = '--- Hz';
+            document.getElementById('live-note-val').innerText = '---';
+            document.getElementById('live-char-banner').innerText = '\u2014';
+            document.getElementById('live-confidence-badge').innerText = 'Conf: 0%';
+          }
+
+          if (rms >= noiseThreshold) {
+            document.getElementById('raw-debug-ticker').innerText = `Señal activa (RMS: ${(rms * 100).toFixed(1)}%) -> Sin periodicidad pura`;
+          } else {
+            document.getElementById('raw-debug-ticker').innerText = `En silencio (RMS: ${(rms * 100).toFixed(1)}% < ${(noiseThreshold * 100).toFixed(1)}%)`;
+          }
+
+          // Verificación de fin de secuencia por pausa prolongada
+          if (receiverState.hasLettersSinceStart) {
+            if (receiverState.silenceStartTime === null) {
+              receiverState.silenceStartTime = now;
+            } else {
+              const elapsed = (now - receiverState.silenceStartTime) / 1000;
+              if (elapsed >= silenceTimeoutSec) {
+                receiverState.hasLettersSinceStart = false;
+                receiverState.silenceStartTime = null;
+                finishDecodedSequence();
+              }
+            }
+          }
+        }
+
+        // Dibujo del Osciloscopio
+        drawOscilloscope(canvas, ctx, timeDomainBuffer, rms, freq !== null);
+      }
+
+      renderLoop();
+    }
+
+    // Registro de nueva letra detectada
+    function registerDecodedLetter(midi, freq, centsOff) {
+      const char = String.fromCharCode(midi);
+      const noteName = midiToNoteName(midi);
+
+      const point = {
+        index: receiverState.decodedPoints.length + 1,
+        char,
+        ascii: midi,
+        midiNote: midi,
+        noteName,
+        frequency: freq
+      };
+
+      receiverState.decodedPoints.push(point);
+      document.getElementById('decoded-count-badge').innerText = `${receiverState.decodedPoints.length} notas registradas`;
+
+      const ribbon = document.getElementById('decoded-letters-ribbon');
+      const emptyMsg = document.getElementById('empty-ribbon-msg');
+      if (emptyMsg) emptyMsg.remove();
+
+      const card = document.createElement('div');
+      card.className = 'letter-card playing';
+      card.innerHTML = `
+        <div class="letter-char">${char}</div>
+        <div class="letter-note">${noteName}</div>
+        <div class="letter-meta">${freq.toFixed(0)} Hz &bull; #${midi}</div>
+      `;
+      ribbon.appendChild(card);
+      setTimeout(() => card.classList.remove('playing'), 300);
+
+      ribbon.scrollLeft = ribbon.scrollWidth;
+    }
+
+    function finishDecodedSequence() {
+      if (receiverState.decodedPoints.length === 0) return;
+      const word = receiverState.decodedPoints.map(p => p.char).join('');
+      receiverState.reconstructedWord = word;
+
+      document.getElementById('reconstructed-word-display').innerText = word;
+      document.getElementById('reconstructed-card').style.display = 'block';
+      document.getElementById('mic-status-title').innerText = '\u00A1Secuencia Completada con \u00C9xito!';
+      document.getElementById('mic-status-desc').innerText = `Palabra reconstruida: "${word}" (${receiverState.decodedPoints.length} caracteres)`;
+    }
+
+    function copyReconstructedWord() {
+      navigator.clipboard.writeText(receiverState.reconstructedWord).then(() => {
+        alert(`Palabra "${receiverState.reconstructedWord}" copiada.`);
+      });
+    }
+
+    function loadReconstructedIntoEmitter() {
+      setPreset(receiverState.reconstructedWord);
+      switchView('emitter');
+    }
+
+    // Dibujo del Osciloscopio en Canvas
+    function drawOscilloscope(canvas, ctx, buffer, rms, hasPitch) {
+      const w = canvas.width = canvas.offsetWidth;
+      const h = canvas.height = canvas.offsetHeight;
+
+      ctx.fillStyle = '#030514';
+      ctx.fillRect(0, 0, w, h);
+
+      // Línea de horizonte central
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      // Forma de Onda
+      const sliceWidth = w / buffer.length;
+      let x = 0;
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = hasPitch ? '#34d399' : (rms >= receiverState.noiseThreshold ? '#38bdf8' : 'rgba(99,102,241,0.4)');
+      ctx.beginPath();
+
+      for (let i = 0; i < buffer.length; i += 2) {
+        const v = buffer[i];
+        const y = (0.5 - v * 1.5) * h;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth * 2;
+      }
+
+      ctx.stroke();
+
+      // Línea de umbral RMS (ruido)
+      const threshY = (0.5 - receiverState.noiseThreshold * 3) * h;
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.45)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, threshY);
+      ctx.lineTo(w, threshY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Actualización del Vúmetro de 12 segmentos
+    function updateVuMeter(rms) {
+      const segments = document.querySelectorAll('#vu-meter .vu-segment');
+      segments.forEach((seg, idx) => {
+        const threshold = ((idx + 1) / 12) * 0.1;
+        seg.className = 'vu-segment';
+        if (rms >= threshold) {
+          if (idx < 6) seg.classList.add('lit-green');
+          else if (idx < 9) seg.classList.add('lit-cyan');
+          else if (idx < 11) seg.classList.add('lit-amber');
+          else seg.classList.add('lit-red');
+        }
+      });
+    }
+
+    /* ==========================================================================
+       INICIALIZACIÓN AL CARGAR EL DOM
+       ========================================================================== */
+    document.addEventListener('DOMContentLoaded', () => {
+      updateSynthParams();
+      updateReceiverSettings();
+      updateEmitterUI();
+
+      // Soporte para Enter en el input
+      document.getElementById('word-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') applyInputWord();
+      });
+
+      // Redibujar canvas en cambio de tamaño de ventana
+      window.addEventListener('resize', () => {
+        if (document.getElementById('view-emitter').classList.contains('active')) {
+          renderCartesianCanvas();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
