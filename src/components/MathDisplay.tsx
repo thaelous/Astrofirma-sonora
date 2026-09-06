@@ -75,44 +75,46 @@ export const MathDisplay: React.FC<MathDisplayProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#06091f]/85 border border-indigo-500/20 rounded-2xl p-5 backdrop-blur-md shadow-xl">
+    <div className="w-full bg-[#06091f]/85 border border-indigo-500/20 rounded-2xl p-3.5 sm:p-5 backdrop-blur-md shadow-xl">
       {/* Header with Mode Toggle and Copy */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-indigo-500/20">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 mb-3 sm:mb-4 pb-2.5 sm:pb-3 border-b border-indigo-500/20">
         <div className="flex items-center gap-2">
-          <Calculator className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-sm font-semibold tracking-wider uppercase text-slate-200 font-mono">
+          <Calculator className="w-4 h-4 text-cyan-400 shrink-0" />
+          <h2 className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-slate-200 font-mono">
             Fórmula Matemática Continua
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
           {/* Toggle buttons */}
-          <div className="inline-flex rounded-xl bg-[#090d28]/90 p-1 border border-indigo-500/30 shadow-inner">
+          <div className="grid grid-cols-2 sm:inline-flex rounded-xl bg-[#090d28]/90 p-1 border border-indigo-500/30 shadow-inner flex-1 sm:flex-initial gap-1">
             <button
               id="toggle-lagrange"
               type="button"
               onClick={() => onModeChange('lagrange')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
                 mode === 'lagrange'
                   ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.35)] font-semibold'
                   : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
               }`}
             >
-              <Sigma className="w-3.5 h-3.5" />
-              <span>Polinomio de Lagrange</span>
+              <Sigma className="w-3.5 h-3.5 shrink-0" />
+              <span className="sm:hidden">Lagrange</span>
+              <span className="hidden sm:inline">Polinomio de Lagrange</span>
             </button>
             <button
               id="toggle-fourier"
               type="button"
               onClick={() => onModeChange('fourier')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
                 mode === 'fourier'
                   ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.35)] font-semibold'
                   : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
               }`}
             >
-              <Waves className="w-3.5 h-3.5" />
-              <span>Serie de Fourier</span>
+              <Waves className="w-3.5 h-3.5 shrink-0" />
+              <span className="sm:hidden">Fourier</span>
+              <span className="hidden sm:inline">Serie de Fourier</span>
             </button>
           </div>
 
@@ -120,7 +122,7 @@ export const MathDisplay: React.FC<MathDisplayProps> = ({
             id="copy-formula-btn"
             onClick={handleCopy}
             title="Copiar fórmula matemática"
-            className="p-2 rounded-xl bg-[#0a0f2e] border border-indigo-500/30 text-indigo-200 hover:text-white hover:border-cyan-400 transition-all cursor-pointer shadow-sm"
+            className="p-2 rounded-xl bg-[#0a0f2e] border border-indigo-500/30 text-indigo-200 hover:text-white hover:border-cyan-400 transition-all cursor-pointer shadow-sm shrink-0"
           >
             {copied ? (
               <Check className="w-4 h-4 text-emerald-400" />
@@ -132,7 +134,7 @@ export const MathDisplay: React.FC<MathDisplayProps> = ({
       </div>
 
       {/* Formula Rendering Box */}
-      <div className="relative rounded-xl bg-[#03040e]/95 border border-indigo-500/25 p-4 font-mono text-xs overflow-x-auto text-slate-200 shadow-inner max-h-56 scrollbar-thin scrollbar-thumb-indigo-500/30">
+      <div className="relative rounded-xl bg-[#03040e]/95 border border-indigo-500/25 p-3 sm:p-4 font-mono text-[11px] sm:text-xs overflow-x-auto text-slate-200 shadow-inner max-h-56 scrollbar-thin scrollbar-thumb-indigo-500/30">
         {mode === 'lagrange' ? (
           <div>
             {/* Mathematical Compact Header */}

@@ -54,15 +54,15 @@ export const LetterRibbon: React.FC<LetterRibbonProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#06091f]/85 border border-indigo-500/20 rounded-2xl p-4.5 backdrop-blur-md shadow-xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+    <div className="w-full bg-[#06091f]/85 border border-indigo-500/20 rounded-2xl p-3.5 sm:p-4.5 backdrop-blur-md shadow-xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 mb-2.5 sm:mb-3">
         <div className="flex items-center gap-2">
-          <Hash className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-sm font-semibold tracking-wider uppercase text-slate-200 font-mono">
+          <Hash className="w-4 h-4 text-cyan-400 shrink-0" />
+          <h2 className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-slate-200 font-mono truncate">
             Mapeo de Datos & Equivalencias Acústicas
           </h2>
         </div>
-        <div className="text-xs text-slate-400 font-mono">
+        <div className="text-[10px] sm:text-xs text-slate-400 font-mono truncate">
           Fórmula:&nbsp;
           <span className="text-sky-300 font-medium">f = 440 &times; 2^((MIDI - 69) / 12)</span>
         </div>
@@ -73,7 +73,7 @@ export const LetterRibbon: React.FC<LetterRibbonProps> = ({
         ref={scrollContainerRef}
         className="overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-indigo-500/40 scrollbar-track-transparent scroll-smooth"
       >
-        <div className="flex items-stretch gap-2.5 min-w-max px-1">
+        <div className="flex items-stretch gap-2 sm:gap-2.5 min-w-max px-1">
           {points.map((p, idx) => {
             const isActive = activeStep === p.index || previewStep === p.index;
             const shiftedMidi = p.midiNote + pitchShift;
@@ -104,7 +104,7 @@ export const LetterRibbon: React.FC<LetterRibbonProps> = ({
                     handleCardClick(p.index, currentFreq);
                   }
                 }}
-                className={`group relative flex flex-col items-center justify-between p-3 rounded-xl border transition-all cursor-pointer min-w-[84px] select-none ${
+                className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer min-w-[76px] sm:min-w-[84px] select-none ${
                   isActive
                     ? 'bg-gradient-to-b from-indigo-500/60 via-cyan-500/40 to-sky-600/35 border-cyan-300 shadow-[0_0_28px_rgba(56,189,248,0.7),inset_0_0_14px_rgba(56,189,248,0.35)] ring-2 ring-cyan-400/60 z-20'
                     : 'bg-[#090e29]/80 border-indigo-500/20 hover:border-indigo-400/60 hover:bg-[#0c133a]/80'

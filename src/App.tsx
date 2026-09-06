@@ -152,7 +152,7 @@ export default function App() {
   const analyser = engineRef.current ? engineRef.current.getAnalyser() : null;
 
   return (
-    <div className="min-h-screen bg-[#040510] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.12),rgba(4,5,16,0))] text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
+    <div className="min-h-screen bg-[#040510] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.12),rgba(4,5,16,0))] text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif] overflow-x-hidden w-full max-w-full">
       {/* 1. Encabezado y Entrada */}
       <Header
         currentWord={word}
@@ -171,7 +171,7 @@ export default function App() {
       />
 
       {/* Main Content Area: Focused, Clean, Minimalist */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-5 md:px-8 space-y-5">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-4 py-4 sm:py-5 md:px-8 space-y-4 sm:space-y-5 overflow-x-hidden">
         {appMode === 'receiver' ? (
           <AcousticDecoder
             onSendToEmitter={(decodedWord) => {
@@ -192,53 +192,55 @@ export default function App() {
 
         {/* 3. Visualizador Central Dual (Dimensión Cósmica) */}
         <section className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
             <h2 className="text-xs font-semibold tracking-wider uppercase text-slate-300 font-mono flex items-center gap-2">
-              <LineChart className="w-4 h-4 text-sky-400" />
+              <LineChart className="w-4 h-4 text-sky-400 shrink-0" />
               <span>Visualizador Dimensional Cósmico</span>
             </h2>
 
-            {/* Selector rápido para alternar entre Gráfica Cartesiana y Osciloscopio */}
-            <div className="inline-flex rounded-xl bg-[#090d26]/90 p-1 border border-indigo-500/30 shadow-inner backdrop-blur-md">
+            {/* Selector rápido para alternar entre pestañas visuales */}
+            <div className="grid grid-cols-2 sm:inline-flex rounded-xl bg-[#090d26]/90 p-1 border border-indigo-500/30 shadow-inner backdrop-blur-md w-full sm:w-auto gap-1">
               <button
                 id="tab-cartesian"
                 type="button"
                 onClick={() => setVisualTab('cartesian')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
                   visualTab === 'cartesian'
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.35)] font-semibold'
                     : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
                 }`}
               >
-                <LineChart className="w-3.5 h-3.5" />
-                <span>Gráfica Cartesiana</span>
+                <LineChart className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden">Cartesiana</span>
+                <span className="hidden sm:inline">Gráfica Cartesiana</span>
               </button>
 
               <button
                 id="tab-oscilloscope"
                 type="button"
                 onClick={() => setVisualTab('oscilloscope')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
                   visualTab === 'oscilloscope'
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.35)] font-semibold'
                     : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
                 }`}
               >
-                <Waves className="w-3.5 h-3.5" />
-                <span>Osciloscopio en Tiempo Real</span>
+                <Waves className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden">Osciloscopio</span>
+                <span className="hidden sm:inline">Osciloscopio en Vivo</span>
               </button>
 
               <button
                 id="tab-spectral3d"
                 type="button"
                 onClick={() => setVisualTab('spectral3d')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
                   visualTab === 'spectral3d'
                     ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white shadow-[0_0_14px_rgba(245,158,11,0.45)] font-semibold'
                     : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
                 }`}
               >
-                <Flame className="w-3.5 h-3.5 text-amber-400" />
+                <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Espectro 3D</span>
               </button>
 
@@ -246,14 +248,15 @@ export default function App() {
                 id="tab-split"
                 type="button"
                 onClick={() => setVisualTab('split')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-mono rounded-lg transition-all cursor-pointer ${
                   visualTab === 'split'
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.35)] font-semibold'
                     : 'text-indigo-200/80 hover:text-white hover:bg-indigo-950/40'
                 }`}
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Vista Dual</span>
+                <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden">Dual</span>
+                <span className="hidden sm:inline">Vista Dual</span>
               </button>
             </div>
           </div>

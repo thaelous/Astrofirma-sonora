@@ -16,6 +16,7 @@ import {
   Music,
   LineChart,
   Radio,
+  Terminal,
 } from 'lucide-react';
 import { parseWordToPoints, midiToNoteName } from '../utils/math';
 import { CartesianCanvas } from './CartesianCanvas';
@@ -59,13 +60,16 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
   const [liveNoteName, setLiveNoteName] = useState<string>('---');
   const [liveMidi, setLiveMidi] = useState<number | null>(null);
   const [liveRms, setLiveRms] = useState<number>(0);
+  const [liveConfidence, setLiveConfidence] = useState<number>(0);
+  const [rawDebugText, setRawDebugText] = useState<string>('Micrófono en espera');
 
   // Decoder adjustable parameters
   const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [noiseThreshold, setNoiseThreshold] = useState<number>(0.022); // RMS threshold
+  const [noiseThreshold, setNoiseThreshold] = useState<number>(0.015); // RMS threshold (default 0.015 as specified)
+  const [minConfidence, setMinConfidence] = useState<number>(0.88); // Min confidence (default 0.88, range >= 0.85)
+  const [minStableFrames, setMinStableFrames] = useState<number>(4); // Require 3-4 consecutive frames (default 4)
   const [tuningToleranceCents, setTuningToleranceCents] = useState<number>(45); // +/- cents
-  const [holdTimeMs, setHoldTimeMs] = useState<number>(180); // ms note must be held
-  const [silenceTimeoutSec, setSilenceTimeoutSec] = useState<number>(2.4); // sec of silence to complete
+  const [silenceTimeoutSec, setSilenceTimeoutSec] = useState<number>(2.2); // sec of silence to complete
 
   // Refs for Web Audio API
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -77,18 +81,20 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
   // Tracking state refs for autocorrelation & debounce inside the audio loop
   const trackingRef = useRef<{
     candidateMidi: number | null;
+    candidateCount: number;
     candidateFreq: number;
-    candidateStartTime: number;
+    candidateCentsOff: number;
     lastRegisteredMidi: number | null;
-    lastRegisteredTime: number;
+    hasDroppedBelowRmsSinceLastNote: boolean;
     silenceStartTime: number | null;
     hasLettersSinceStart: boolean;
   }>({
     candidateMidi: null,
+    candidateCount: 0,
     candidateFreq: 0,
-    candidateStartTime: 0,
+    candidateCentsOff: 0,
     lastRegisteredMidi: null,
-    lastRegisteredTime: 0,
+    hasDroppedBelowRmsSinceLastNote: true,
     silenceStartTime: null,
     hasLettersSinceStart: false,
   });
@@ -96,29 +102,38 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
   // Keep settings synced in refs to avoid restarting audio loop on slider drag
   const settingsRef = useRef({
     noiseThreshold,
+    minConfidence,
+    minStableFrames,
     tuningToleranceCents,
-    holdTimeMs,
     silenceTimeoutSec,
   });
 
   useEffect(() => {
     settingsRef.current = {
       noiseThreshold,
+      minConfidence,
+      minStableFrames,
       tuningToleranceCents,
-      holdTimeMs,
       silenceTimeoutSec,
     };
-  }, [noiseThreshold, tuningToleranceCents, holdTimeMs, silenceTimeoutSec]);
+  }, [noiseThreshold, minConfidence, minStableFrames, tuningToleranceCents, silenceTimeoutSec]);
 
-  // Autocorrelation Pitch Detection Algorithm
+  // Robust Pitch Detection Algorithm: Normalized Square Difference Function (NSDF / YIN time-domain autocorrelation)
   const detectPitch = (
     buffer: Float32Array,
     sampleRate: number,
-    threshold: number
-  ): { freq: number | null; rms: number; clarity: number } => {
+    thresholdRms: number,
+    confidenceThreshold: number
+  ): {
+    freq: number | null;
+    rms: number;
+    confidence: number;
+    rawMidi: number | null;
+    rawNote: string;
+  } => {
     const bufferLength = buffer.length;
 
-    // 1. Calculate RMS
+    // 1. Calculate RMS of the time domain buffer
     let sumSquares = 0;
     for (let i = 0; i < bufferLength; i++) {
       const val = buffer[i];
@@ -126,76 +141,118 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
     }
     const rms = Math.sqrt(sumSquares / bufferLength);
 
-    if (rms < threshold) {
-      return { freq: null, rms, clarity: 0 };
+    // If RMS is below threshold (0.015 default), abort cycle and do not detect pitch
+    if (rms < thresholdRms) {
+      return { freq: null, rms, confidence: 0, rawMidi: null, rawNote: '---' };
     }
 
-    // 2. Autocorrelation over targeted lag range (180 Hz to 2400 Hz)
-    // At 44.1kHz: minLag ~ 18, maxLag ~ 300
-    const minLag = Math.floor(sampleRate / 2400);
-    const maxLag = Math.ceil(sampleRate / 180);
+    // 2. Bound lag search strictly between 150 Hz and 2200 Hz
+    const minLag = Math.floor(sampleRate / 2200);
+    const maxLag = Math.ceil(sampleRate / 150);
 
-    // Compute autocorrelation for lags
-    let bestLag = -1;
-    let bestCorr = 0;
-
-    // First find where correlation starts dropping
-    let prevCorr = 1;
-    let foundDip = false;
-
-    // Precalculate energy at lag 0
-    let r0 = 0;
-    for (let i = 0; i < bufferLength - maxLag; i++) {
-      r0 += buffer[i] * buffer[i];
-    }
-    if (r0 <= 0.00001) {
-      return { freq: null, rms, clarity: 0 };
+    if (maxLag >= bufferLength - 2) {
+      return { freq: null, rms, confidence: 0, rawMidi: null, rawNote: '---' };
     }
 
-    const corrValues = new Float32Array(maxLag + 2);
+    // 3. Normalized Square Difference Function (NSDF)
+    // Window length W ensures we stay within buffer boundaries
+    const W = bufferLength - maxLag;
 
-    for (let lag = minLag; lag <= maxLag; lag++) {
-      let rLag = 0;
-      for (let i = 0; i < bufferLength - maxLag; i++) {
-        rLag += buffer[i] * buffer[i + lag];
+    // m0 = sum_{j=0}^{W-1} buffer[j]^2
+    let m0 = 0;
+    for (let j = 0; j < W; j++) {
+      m0 += buffer[j] * buffer[j];
+    }
+
+    if (m0 < 0.00001) {
+      return { freq: null, rms, confidence: 0, rawMidi: null, rawNote: '---' };
+    }
+
+    // Precalculate term2: sum_{j=0}^{W-1} buffer[j + tau]^2 using sliding sum
+    const term2 = new Float32Array(maxLag + 2);
+    term2[0] = m0;
+    for (let tau = 1; tau <= maxLag + 1; tau++) {
+      term2[tau] =
+        term2[tau - 1] -
+        buffer[tau - 1] * buffer[tau - 1] +
+        buffer[tau - 1 + W] * buffer[tau - 1 + W];
+    }
+
+    // Calculate NSDF normalized correlation values
+    const nsdf = new Float32Array(maxLag + 2);
+    for (let tau = minLag - 1; tau <= maxLag + 1; tau++) {
+      let r = 0;
+      for (let j = 0; j < W; j++) {
+        r += buffer[j] * buffer[j + tau];
       }
-      const normalizedCorr = rLag / r0;
-      corrValues[lag] = normalizedCorr;
+      const m = m0 + term2[tau];
+      nsdf[tau] = m > 0.00001 ? (2 * r) / m : 0;
+    }
 
-      if (!foundDip) {
-        if (normalizedCorr < prevCorr && normalizedCorr < 0.65) {
-          foundDip = true;
-        }
-      } else {
-        if (normalizedCorr > bestCorr && normalizedCorr > 0.55) {
-          bestCorr = normalizedCorr;
-          bestLag = lag;
+    // 4. Find all local maxima (peaks) within [minLag, maxLag]
+    interface Peak {
+      lag: number;
+      val: number;
+    }
+    const peaks: Peak[] = [];
+    let maxPeakVal = -1;
+
+    for (let tau = minLag; tau <= maxLag; tau++) {
+      const val = nsdf[tau];
+      if (val > nsdf[tau - 1] && val >= nsdf[tau + 1] && val > 0) {
+        peaks.push({ lag: tau, val });
+        if (val > maxPeakVal) {
+          maxPeakVal = val;
         }
       }
-      prevCorr = normalizedCorr;
     }
 
-    if (bestLag <= 0 || bestCorr < 0.6) {
-      return { freq: null, rms, clarity: bestCorr };
+    // Reject if no valid peaks or if global max peak is below required confidence threshold
+    if (peaks.length === 0 || maxPeakVal < confidenceThreshold) {
+      return { freq: null, rms, confidence: Math.max(0, maxPeakVal), rawMidi: null, rawNote: '---' };
     }
 
-    // 3. Parabolic interpolation for sub-sample precision
-    const y1 = corrValues[bestLag - 1] || bestCorr;
-    const y2 = corrValues[bestLag];
-    const y3 = corrValues[bestLag + 1] || bestCorr;
+    // 5. Pick the first significant peak >= (0.85 * maxPeakVal) to prevent octave errors
+    const cutoff = Math.max(confidenceThreshold, maxPeakVal * 0.85);
+    let bestPeak = peaks[0];
+    for (let i = 0; i < peaks.length; i++) {
+      if (peaks[i].val >= cutoff) {
+        bestPeak = peaks[i];
+        break;
+      }
+    }
 
-    const denominator = 2 * (2 * y2 - y1 - y3);
+    // 6. Sub-sample Parabolic Interpolation for accurate pitch
+    const bestLag = bestPeak.lag;
+    const y1 = nsdf[bestLag - 1];
+    const y2 = nsdf[bestLag];
+    const y3 = nsdf[bestLag + 1];
+
+    const denom = 2 * (2 * y2 - y1 - y3);
     let delta = 0;
-    if (Math.abs(denominator) > 0.000001) {
-      delta = (y3 - y1) / denominator;
+    if (Math.abs(denom) > 1e-6) {
+      delta = (y3 - y1) / denom;
     }
+    // Clamp delta to safe interval
+    delta = Math.max(-0.5, Math.min(0.5, delta));
     const refinedLag = bestLag + delta;
     const fundamentalFreq = sampleRate / refinedLag;
+
+    // Strict frequency boundary check between 150 Hz and 2200 Hz
+    if (fundamentalFreq < 150 || fundamentalFreq > 2200) {
+      return { freq: null, rms, confidence: bestPeak.val, rawMidi: null, rawNote: '---' };
+    }
+
+    const exactMidi = 69 + 12 * Math.log2(fundamentalFreq / 440);
+    const roundedMidi = Math.round(exactMidi);
+    const rawNote = midiToNoteName(roundedMidi);
 
     return {
       freq: fundamentalFreq,
       rms,
-      clarity: bestCorr,
+      confidence: bestPeak.val,
+      rawMidi: roundedMidi,
+      rawNote,
     };
   };
 
@@ -219,6 +276,8 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
     setLiveNoteName('---');
     setLiveMidi(null);
     setLiveRms(0);
+    setLiveConfidence(0);
+    setRawDebugText('Micrófono detenido');
     setStatusPhase('idle');
     setStatusMessage('Escucha detenida. Micrófono desactivado.');
   }, []);
@@ -226,9 +285,8 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
   // Register a new identified letter into state
   const handleRegisterLetter = useCallback(
     (midi: number, freq: number, centsOff: number) => {
-      // Validate character within standard printable ASCII range (A-Z or other letters)
-      let ascii = midi;
-      // If outside printable ASCII, constrain
+      // Validate character within standard printable ASCII range
+      const ascii = midi;
       if (ascii < 32 || ascii > 126) {
         return;
       }
@@ -255,7 +313,7 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
       });
 
       setStatusPhase('detecting');
-      setStatusMessage(`Nota detectada: ${noteName} (${char}) a ${freq.toFixed(1)} Hz`);
+      setStatusMessage(`Nota detectada: ${noteName} ('${char}') a ${freq.toFixed(1)} Hz`);
     },
     []
   );
@@ -263,7 +321,7 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
   // Audio Processing Loop
   const startAudioLoop = useCallback(
     (analyser: AnalyserNode, sampleRate: number) => {
-      const bufferLength = analyser.fftSize;
+      const bufferLength = analyser.fftSize; // 2048
       const timeDomainBuffer = new Float32Array(bufferLength);
       const canvas = canvasRef.current;
       const ctx = canvas ? canvas.getContext('2d') : null;
@@ -274,82 +332,131 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
         frameCounter++;
         analyser.getFloatTimeDomainData(timeDomainBuffer);
 
-        const { noiseThreshold, tuningToleranceCents, holdTimeMs, silenceTimeoutSec } =
-          settingsRef.current;
+        const {
+          noiseThreshold,
+          minConfidence,
+          minStableFrames,
+          tuningToleranceCents,
+          silenceTimeoutSec,
+        } = settingsRef.current;
 
-        // Run autocorrelation
-        const { freq, rms } = detectPitch(timeDomainBuffer, sampleRate, noiseThreshold);
+        // Run robust YIN / NSDF time-domain pitch detection
+        const { freq, rms, confidence, rawMidi, rawNote } = detectPitch(
+          timeDomainBuffer,
+          sampleRate,
+          noiseThreshold,
+          minConfidence
+        );
 
         const now = performance.now();
         const tracking = trackingRef.current;
 
-        // Live visual RMS update (every 2 frames)
-        if (frameCounter % 2 === 0) {
-          setLiveRms(rms);
-        }
+        // Update live RMS for visual feedback on every frame
+        setLiveRms(rms);
 
-        if (freq && freq >= 150 && freq <= 2600) {
-          // Reset silence timer because tone is present
+        if (freq && freq >= 150 && freq <= 2200) {
+          // Tone is present: reset silence timer
           tracking.silenceStartTime = null;
 
-          // Inverse MIDI Calculation:
-          // MIDI = round(69 + 12 * log2(f / 440))
+          // Inverse MIDI Calculation: MIDI = round(69 + 12 * log2(f / 440))
           const exactMidi = 69 + 12 * Math.log2(freq / 440);
           const roundedMidi = Math.round(exactMidi);
           const centsOff = (exactMidi - roundedMidi) * 100;
 
-          // Check tuning tolerance
-          if (Math.abs(centsOff) <= tuningToleranceCents && roundedMidi >= 32 && roundedMidi <= 122) {
-            // Live stats update
-            if (frameCounter % 3 === 0) {
-              setLiveFreq(freq);
-              setLiveMidi(roundedMidi);
-              setLiveNoteName(midiToNoteName(roundedMidi));
+          // Check tuning tolerance and ASCII printable range
+          if (
+            Math.abs(centsOff) <= tuningToleranceCents &&
+            roundedMidi >= 32 &&
+            roundedMidi <= 126
+          ) {
+            // Update live metrics
+            setLiveFreq(freq);
+            setLiveMidi(roundedMidi);
+            setLiveNoteName(rawNote || midiToNoteName(roundedMidi));
+            setLiveConfidence(confidence);
+
+            const char = String.fromCharCode(roundedMidi);
+            setRawDebugText(
+              `Detectando: ${freq.toFixed(1)} Hz -> MIDI: ${roundedMidi} -> '${char}' (${rawNote}) [Conf: ${(confidence * 100).toFixed(0)}%]`
+            );
+
+            // Stability check: candidate counting across consecutive frames
+            if (tracking.candidateMidi === roundedMidi) {
+              tracking.candidateCount++;
+            } else {
+              tracking.candidateMidi = roundedMidi;
+              tracking.candidateCount = 1;
+              tracking.candidateFreq = freq;
+              tracking.candidateCentsOff = centsOff;
             }
 
-            // Stability tracker
-            if (tracking.candidateMidi === roundedMidi) {
-              const elapsed = now - tracking.candidateStartTime;
-              if (elapsed >= holdTimeMs) {
-                // If it's a different note from the last registered note, or after a silence/attack gap
-                const timeSinceLast = now - tracking.lastRegisteredTime;
-                if (tracking.lastRegisteredMidi !== roundedMidi || timeSinceLast > 400) {
-                  tracking.lastRegisteredMidi = roundedMidi;
-                  tracking.lastRegisteredTime = now;
-                  tracking.hasLettersSinceStart = true;
-                  handleRegisterLetter(roundedMidi, freq, centsOff);
-                }
+            // Require 3 to 4 consecutive stable frames (~60-100 ms)
+            if (tracking.candidateCount >= minStableFrames) {
+              const isSameAsLast = tracking.lastRegisteredMidi === roundedMidi;
+
+              // If next note is identical to the previous, require RMS to have dropped below threshold first
+              if (!isSameAsLast || tracking.hasDroppedBelowRmsSinceLastNote) {
+                tracking.lastRegisteredMidi = roundedMidi;
+                tracking.hasDroppedBelowRmsSinceLastNote = false;
+                tracking.hasLettersSinceStart = true;
+                tracking.silenceStartTime = null;
+                // Prevent continuous re-registration while the tone stays on
+                tracking.candidateCount = -9999;
+
+                handleRegisterLetter(roundedMidi, freq, centsOff);
+                console.log(
+                  `[AcousticDecoder] ✅ Nota registrada: ${freq.toFixed(1)} Hz -> MIDI ${roundedMidi} ('${char}')`
+                );
               }
-            } else {
-              // New candidate note detected
-              tracking.candidateMidi = roundedMidi;
-              tracking.candidateFreq = freq;
-              tracking.candidateStartTime = now;
             }
+          } else {
+            // Pitch found but out of tuning tolerance or non-ASCII
+            setRawDebugText(
+              `Tono detectado: ${freq.toFixed(1)} Hz (Desafinación ${centsOff.toFixed(0)}c > ±${tuningToleranceCents}c)`
+            );
           }
         } else {
-          // Silence or below noise threshold
+          // Silence or below RMS threshold or no periodic pitch
           tracking.candidateMidi = null;
-          if (frameCounter % 5 === 0) {
+          tracking.candidateCount = 0;
+
+          // If RMS drops below noise threshold, register that silence occurred between notes
+          if (rms < noiseThreshold) {
+            tracking.hasDroppedBelowRmsSinceLastNote = true;
+          }
+
+          // Clear active note display periodically when silent
+          if (frameCounter % 6 === 0) {
             setLiveFreq(null);
             setLiveNoteName('---');
             setLiveMidi(null);
+            setLiveConfidence(0);
           }
 
-          // Check silence timeout to finalize sequence
+          // Real-time raw debug text
+          if (rms >= noiseThreshold) {
+            setRawDebugText(
+              `Señal activa (RMS: ${(rms * 100).toFixed(1)}%) -> Sin periodicidad (Conf: ${(confidence * 100).toFixed(0)}% < ${(minConfidence * 100).toFixed(0)}%)`
+            );
+          } else {
+            setRawDebugText(
+              `En silencio (RMS: ${(rms * 100).toFixed(1)}% < ${(noiseThreshold * 100).toFixed(1)}% umbral)`
+            );
+          }
+
+          // Silence timeout check to finish sequence
           if (tracking.hasLettersSinceStart) {
             if (tracking.silenceStartTime === null) {
               tracking.silenceStartTime = now;
             } else {
               const silenceElapsed = (now - tracking.silenceStartTime) / 1000;
               if (silenceElapsed >= silenceTimeoutSec) {
-                // Silence threshold exceeded: finalize sequence!
                 tracking.hasLettersSinceStart = false;
                 tracking.silenceStartTime = null;
                 setIsSequenceCompleted(true);
                 setStatusPhase('completed');
                 setStatusMessage('¡Secuencia completada! Palabra reconstruida y graficada.');
-              } else if (silenceElapsed > 0.6) {
+              } else if (silenceElapsed > 0.5) {
                 setStatusPhase('waiting');
                 setStatusMessage(
                   `Esperando siguiente nota... (${(silenceTimeoutSec - silenceElapsed).toFixed(
@@ -361,14 +468,14 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
           }
         }
 
-        // Draw Live Canvas Visualizer
+        // Draw Live Canvas Oscilloscope Visualizer
         if (canvas && ctx) {
           const w = canvas.width;
           const h = canvas.height;
           ctx.clearRect(0, 0, w, h);
 
           // Subtle dark background
-          ctx.fillStyle = '#050718';
+          ctx.fillStyle = '#040615';
           ctx.fillRect(0, 0, w, h);
 
           // Center horizon line
@@ -383,15 +490,18 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
           const sliceWidth = w / bufferLength;
           let x = 0;
 
-          // Color based on whether signal is active
           const isSignal = rms >= noiseThreshold;
           const gradient = ctx.createLinearGradient(0, 0, w, 0);
-          if (isSignal) {
+          if (freq !== null && isSignal) {
             gradient.addColorStop(0, '#06b6d4');
             gradient.addColorStop(0.5, '#38bdf8');
             gradient.addColorStop(1, '#818cf8');
             ctx.shadowColor = '#38bdf8';
             ctx.shadowBlur = 8;
+          } else if (isSignal) {
+            gradient.addColorStop(0, '#34d399');
+            gradient.addColorStop(1, '#06b6d4');
+            ctx.shadowBlur = 4;
           } else {
             gradient.addColorStop(0, 'rgba(99, 102, 241, 0.35)');
             gradient.addColorStop(1, 'rgba(148, 163, 184, 0.35)');
@@ -402,22 +512,22 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
           ctx.strokeStyle = gradient;
           ctx.beginPath();
 
-          for (let i = 0; i < bufferLength; i += 4) {
+          for (let i = 0; i < bufferLength; i += 2) {
             const v = timeDomainBuffer[i];
-            const y = (v + 1) * (h / 2);
+            const y = (0.5 - v * 1.5) * h;
 
             if (i === 0) {
               ctx.moveTo(x, y);
             } else {
               ctx.lineTo(x, y);
             }
-            x += sliceWidth * 4;
+            x += sliceWidth * 2;
           }
           ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Threshold Indicator Line
-          const threshY = (1 - noiseThreshold * 8) * (h / 2);
+          // Noise gate threshold line
+          const threshY = (0.5 - noiseThreshold * 3) * h;
           ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
           ctx.setLineDash([4, 4]);
           ctx.beginPath();
@@ -441,11 +551,12 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
     setIsSequenceCompleted(false);
 
     try {
-      // 1. Request microphone access
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Tu navegador no soporta captura de micrófono mediante getUserMedia.');
       }
 
+      // Explicitly disable echo cancellation, noise suppression, and auto gain control
+      // to avoid filtering out pure synthesizer frequencies
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -456,53 +567,48 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
 
       mediaStreamRef.current = stream;
 
-      // 2. Initialize AudioContext
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      // Initialize AudioContext
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioCtx = new AudioCtx();
       audioContextRef.current = audioCtx;
 
-      if (audioCtx.state === 'suspended') {
+      // Explicitly resume AudioContext within user click interaction
+      if (audioCtx.state !== 'running') {
         await audioCtx.resume();
       }
 
-      // 3. Create audio graph: Source -> Bandpass Filter -> Analyser
       const source = audioCtx.createMediaStreamSource(stream);
-
-      // Low-cut filter to remove desk thumps & 50/60Hz hum
-      const highpass = audioCtx.createBiquadFilter();
-      highpass.type = 'highpass';
-      highpass.frequency.value = 160;
-
-      // High-cut filter to remove high-frequency air hiss
-      const lowpass = audioCtx.createBiquadFilter();
-      lowpass.type = 'lowpass';
-      lowpass.frequency.value = 3200;
-
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 4096;
-      analyser.smoothingTimeConstant = 0.2;
+      analyser.fftSize = 2048; // Buffer size of 2048 as specified
+      analyser.smoothingTimeConstant = 0; // Pure instantaneous time domain
       analyserRef.current = analyser;
 
-      source.connect(highpass);
-      highpass.connect(lowpass);
-      lowpass.connect(analyser);
+      source.connect(analyser);
+
+      console.log(
+        `[AcousticDecoder] AudioContext iniciado (estado: ${audioCtx.state}, sampleRate: ${audioCtx.sampleRate} Hz)`
+      );
 
       // Reset tracking state
       trackingRef.current = {
         candidateMidi: null,
+        candidateCount: 0,
         candidateFreq: 0,
-        candidateStartTime: 0,
+        candidateCentsOff: 0,
         lastRegisteredMidi: null,
-        lastRegisteredTime: 0,
+        hasDroppedBelowRmsSinceLastNote: true,
         silenceStartTime: null,
         hasLettersSinceStart: false,
       };
 
       setIsListening(true);
       setStatusPhase('waiting');
-      setStatusMessage('Esperando señal acústica... Reproduce la firma sonora cerca de este micrófono.');
+      setStatusMessage('Micrófono activo y calibrado. Reproduce la firma sonora cerca.');
+      setRawDebugText('Micrófono conectado. Esperando tonos...');
 
-      // Start detection loop
+      // Start detection loop driven by requestAnimationFrame
       startAudioLoop(analyser, audioCtx.sampleRate);
     } catch (err: unknown) {
       console.error('Error al acceder al micrófono:', err);
@@ -525,19 +631,22 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
     setIsSequenceCompleted(false);
     trackingRef.current = {
       candidateMidi: null,
+      candidateCount: 0,
       candidateFreq: 0,
-      candidateStartTime: 0,
+      candidateCentsOff: 0,
       lastRegisteredMidi: null,
-      lastRegisteredTime: 0,
+      hasDroppedBelowRmsSinceLastNote: true,
       silenceStartTime: null,
       hasLettersSinceStart: false,
     };
     if (isListening) {
       setStatusPhase('waiting');
       setStatusMessage('Secuencia reiniciada. Esperando notas acústicas...');
+      setRawDebugText('Receptor reiniciado. Esperando tonos...');
     } else {
       setStatusPhase('idle');
       setStatusMessage('Listo para escuchar. Presiona "Comenzar a Escuchar".');
+      setRawDebugText('Micrófono en espera');
     }
   };
 
@@ -581,15 +690,15 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
           </div>
 
           {/* Action Buttons: Listen & Reset & Settings */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
             {!isListening ? (
               <button
                 id="btn-start-listening"
                 type="button"
                 onClick={startListening}
-                className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-mono text-xs sm:text-sm font-semibold flex items-center gap-2.5 shadow-[0_0_20px_rgba(6,182,212,0.45)] hover:shadow-[0_0_28px_rgba(6,182,212,0.65)] transition-all cursor-pointer active:scale-95"
+                className="w-full sm:w-auto justify-center px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-mono text-xs sm:text-sm font-semibold flex items-center gap-2.5 shadow-[0_0_20px_rgba(6,182,212,0.45)] hover:shadow-[0_0_28px_rgba(6,182,212,0.65)] transition-all cursor-pointer active:scale-95"
               >
-                <Mic className="w-4 h-4 text-cyan-100" />
+                <Mic className="w-4 h-4 text-cyan-100 shrink-0" />
                 <span>Comenzar a Escuchar</span>
               </button>
             ) : (
@@ -597,38 +706,40 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
                 id="btn-stop-listening"
                 type="button"
                 onClick={stopListening}
-                className="px-5 py-3 rounded-xl bg-rose-600/90 hover:bg-rose-500 border border-rose-400/40 text-white font-mono text-xs sm:text-sm font-semibold flex items-center gap-2.5 shadow-[0_0_20px_rgba(244,63,94,0.45)] transition-all cursor-pointer active:scale-95 animate-pulse"
+                className="w-full sm:w-auto justify-center px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-rose-600/90 hover:bg-rose-500 border border-rose-400/40 text-white font-mono text-xs sm:text-sm font-semibold flex items-center gap-2.5 shadow-[0_0_20px_rgba(244,63,94,0.45)] transition-all cursor-pointer active:scale-95 animate-pulse"
               >
-                <MicOff className="w-4 h-4" />
+                <MicOff className="w-4 h-4 shrink-0" />
                 <span>Detener Micrófono</span>
               </button>
             )}
 
-            <button
-              id="btn-reset-decoder"
-              type="button"
-              onClick={handleReset}
-              className="px-4 py-3 rounded-xl bg-[#090d28] hover:bg-indigo-950/60 border border-indigo-500/30 text-indigo-200 hover:text-white font-mono text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Reiniciar y borrar secuencia"
-            >
-              <RotateCcw className="w-4 h-4 text-sky-400" />
-              <span>Limpiar / Reiniciar</span>
-            </button>
+            <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+              <button
+                id="btn-reset-decoder"
+                type="button"
+                onClick={handleReset}
+                className="w-full sm:w-auto justify-center px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-[#090d28] hover:bg-indigo-950/60 border border-indigo-500/30 text-indigo-200 hover:text-white font-mono text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Reiniciar y borrar secuencia"
+              >
+                <RotateCcw className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>Limpiar</span>
+              </button>
 
-            <button
-              id="btn-toggle-decoder-settings"
-              type="button"
-              onClick={() => setShowSettings((s) => !s)}
-              className={`px-3.5 py-3 rounded-xl border font-mono text-xs flex items-center gap-2 transition-all cursor-pointer ${
-                showSettings
-                  ? 'bg-indigo-600/40 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(56,189,248,0.3)]'
-                  : 'bg-[#090d28] border-indigo-500/30 text-slate-300 hover:text-white hover:bg-indigo-950/50'
-              }`}
-              title="Ajustes de Sensibilidad y Tolerancia de Afinación"
-            >
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="hidden sm:inline">Ajustes</span>
-            </button>
+              <button
+                id="btn-toggle-decoder-settings"
+                type="button"
+                onClick={() => setShowSettings((s) => !s)}
+                className={`w-full sm:w-auto justify-center px-3 sm:px-3.5 py-2.5 sm:py-3 rounded-xl border font-mono text-xs flex items-center gap-2 transition-all cursor-pointer ${
+                  showSettings
+                    ? 'bg-indigo-600/40 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(56,189,248,0.3)]'
+                    : 'bg-[#090d28] border-indigo-500/30 text-slate-300 hover:text-white hover:bg-indigo-950/50'
+                }`}
+                title="Ajustes de Sensibilidad y Tolerancia de Afinación"
+              >
+                <Sliders className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Ajustes</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -654,44 +765,86 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="bg-[#070b24] border border-cyan-500/30 rounded-2xl p-5 shadow-lg space-y-4">
-              <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
+            <div className="bg-[#070b24] border border-cyan-500/30 rounded-2xl p-3.5 sm:p-5 shadow-lg space-y-3 sm:space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-indigo-500/20 pb-2">
                 <div className="flex items-center gap-2 text-cyan-300 font-mono text-xs font-semibold uppercase tracking-wider">
-                  <Sliders className="w-4 h-4" />
+                  <Sliders className="w-4 h-4 shrink-0" />
                   <span>Calibración de Entrada y Tolerancia Acústica</span>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">
+                <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">
                   Optimiza para altavoces o ruido ambiental
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
                 {/* 1. Sensibilidad del Micrófono (Umbral RMS) */}
                 <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20">
                   <div className="flex justify-between text-xs font-mono">
-                    <span className="text-slate-300">Sensibilidad (Umbral RMS):</span>
+                    <span className="text-slate-300">Umbral Silencio (RMS):</span>
                     <span className="text-cyan-400 font-bold">{(noiseThreshold * 100).toFixed(1)}%</span>
                   </div>
                   <input
                     type="range"
-                    min="0.008"
-                    max="0.08"
-                    step="0.002"
+                    min="0.005"
+                    max="0.05"
+                    step="0.001"
                     value={noiseThreshold}
                     onChange={(e) => setNoiseThreshold(parseFloat(e.target.value))}
                     className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                   />
                   <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                    <span>Sensible (silencioso)</span>
-                    <span>Estricto (ruidoso)</span>
+                    <span>0.5% (Silencioso)</span>
+                    <span>5.0% (Ruidoso)</span>
                   </div>
                 </div>
 
-                {/* 2. Tolerancia de Afinación (cents) */}
+                {/* 2. Confiabilidad YIN / Autocorrelación */}
                 <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20">
                   <div className="flex justify-between text-xs font-mono">
-                    <span className="text-slate-300">Tolerancia de Afinación:</span>
-                    <span className="text-cyan-400 font-bold">&plusmn;{tuningToleranceCents} cents</span>
+                    <span className="text-slate-300">Filtro Confiabilidad:</span>
+                    <span className="text-cyan-400 font-bold">{(minConfidence * 100).toFixed(0)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.75"
+                    max="0.95"
+                    step="0.01"
+                    value={minConfidence}
+                    onChange={(e) => setMinConfidence(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                    <span>75% (Flexible)</span>
+                    <span>95% (Estricto)</span>
+                  </div>
+                </div>
+
+                {/* 3. Estabilidad de Nota (Cuadros consecutivos) */}
+                <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-slate-300">Estabilidad Nota:</span>
+                    <span className="text-cyan-400 font-bold">{minStableFrames} cuadros</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="2"
+                    max="6"
+                    step="1"
+                    value={minStableFrames}
+                    onChange={(e) => setMinStableFrames(parseInt(e.target.value, 10))}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                    <span>2 (~33ms)</span>
+                    <span>6 (~100ms)</span>
+                  </div>
+                </div>
+
+                {/* 4. Tolerancia de Afinación (cents) */}
+                <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-slate-300">Tolerancia Afinación:</span>
+                    <span className="text-cyan-400 font-bold">&plusmn;{tuningToleranceCents}c</span>
                   </div>
                   <input
                     type="range"
@@ -703,36 +856,15 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
                     className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                   />
                   <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                    <span>Estricto (&plusmn;20c)</span>
-                    <span>Tolerante (&plusmn;50c)</span>
+                    <span>&plusmn;20c (Preciso)</span>
+                    <span>&plusmn;50c (Amplio)</span>
                   </div>
                 </div>
 
-                {/* 3. Ventana Mínima de Nota (Hold time ms) */}
-                <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20">
+                {/* 5. Tiempo Fin de Secuencia (silence timeout) */}
+                <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20 sm:col-span-2 lg:col-span-1">
                   <div className="flex justify-between text-xs font-mono">
-                    <span className="text-slate-300">Ventana Mínima de Nota:</span>
-                    <span className="text-cyan-400 font-bold">{holdTimeMs} ms</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="100"
-                    max="350"
-                    step="10"
-                    value={holdTimeMs}
-                    onChange={(e) => setHoldTimeMs(parseInt(e.target.value, 10))}
-                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                    <span>Rápido (100ms)</span>
-                    <span>Estable (350ms)</span>
-                  </div>
-                </div>
-
-                {/* 4. Tiempo Fin de Secuencia (silence timeout) */}
-                <div className="space-y-1.5 bg-[#0a0f30]/80 p-3 rounded-xl border border-indigo-500/20">
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-slate-300">Pausa Fin de Secuencia:</span>
+                    <span className="text-slate-300">Fin Secuencia:</span>
                     <span className="text-cyan-400 font-bold">{silenceTimeoutSec.toFixed(1)} s</span>
                   </div>
                   <input
@@ -756,34 +888,34 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
       </AnimatePresence>
 
       {/* 3. Visualizador de Entrada Espectral & Métricas en Vivo */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Live Audio Oscilloscope Canvas */}
-        <div className="lg:col-span-2 bg-[#06091f]/90 border border-indigo-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md shadow-xl">
-          <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="lg:col-span-2 bg-[#06091f]/90 border border-indigo-500/20 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between backdrop-blur-md shadow-xl space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
             <div className="flex items-center gap-2 text-xs font-mono text-slate-200">
-              <Activity className="w-4 h-4 text-cyan-400 animate-pulse" />
-              <span className="font-semibold uppercase tracking-wider">
-                Monitor de Entrada Acústica (Onda en Tiempo Real)
+              <Activity className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
+              <span className="font-semibold uppercase tracking-wider truncate">
+                Monitor Osciloscopio (Dominio del Tiempo 2048 pts)
               </span>
             </div>
 
             {/* Signal indicator */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <span
                 className={`inline-block w-2.5 h-2.5 rounded-full ${
                   isListening
                     ? liveRms >= noiseThreshold
-                      ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+                      ? 'bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse'
                       : 'bg-amber-400/80'
                     : 'bg-slate-600'
                 }`}
               />
-              <span className="text-[11px] font-mono text-slate-400">
+              <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-slate-300">
                 {isListening
                   ? liveRms >= noiseThreshold
-                    ? 'Tono en el Aire'
-                    : 'Silencio / Esperando'
-                  : 'Inactivo'}
+                    ? 'SEÑAL ACTIVA (RMS > Umbral)'
+                    : 'SILENCIO / ESPERANDO'
+                  : 'MIC INACTIVO'}
               </span>
             </div>
           </div>
@@ -793,91 +925,148 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
 
             {/* Noise Gate threshold label on canvas */}
             <div className="absolute top-2 left-2 text-[10px] font-mono text-rose-400/80 pointer-events-none bg-[#050718]/80 px-1.5 py-0.5 rounded border border-rose-500/30">
-              Umbral Ruido: {(noiseThreshold * 100).toFixed(1)}%
+              Umbral Ruido: {(noiseThreshold * 100).toFixed(1)}% RMS
             </div>
 
             {/* Current status pill overlay */}
-            <div className="absolute bottom-2 right-2 text-[11px] font-mono text-cyan-300 bg-[#080d28]/90 px-2.5 py-1 rounded-lg border border-cyan-500/30 shadow-md">
+            <div className="absolute bottom-2 right-2 max-w-[calc(100%-16px)] truncate text-[10px] sm:text-[11px] font-mono text-cyan-300 bg-[#080d28]/90 px-2.5 py-1 rounded-lg border border-cyan-500/30 shadow-md">
               {statusMessage}
             </div>
           </div>
+
+          {/* Real-Time Raw Debug Console Ticker */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#030616] border border-cyan-500/25 text-[11px] font-mono shadow-inner">
+            <div className="flex items-center gap-2 truncate">
+              <Terminal className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span className="text-slate-400 shrink-0 hidden sm:inline">Lectura en Crudo:</span>
+              <span
+                className={`font-semibold truncate ${
+                  liveFreq !== null ? 'text-emerald-300' : 'text-slate-300'
+                }`}
+              >
+                {rawDebugText}
+              </span>
+            </div>
+            <span className="text-slate-500 shrink-0 text-[10px] hidden md:inline">
+              150Hz - 2200Hz &bull; YIN / Autocorrelación
+            </span>
+          </div>
         </div>
 
-        {/* Live Metrics: Frequency, MIDI, Note Name */}
-        <div className="bg-[#06091f]/90 border border-indigo-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md shadow-xl space-y-3">
-          <div className="text-xs font-mono text-slate-300 font-semibold uppercase tracking-wider flex items-center gap-2">
-            <Volume2 className="w-4 h-4 text-sky-400" />
-            <span>Frecuencia & Nota Detectada</span>
+        {/* Live Metrics: Frequency, MIDI, Note Name & LED VU Meter */}
+        <div className="bg-[#06091f]/90 border border-indigo-500/20 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between backdrop-blur-md shadow-xl space-y-3">
+          <div className="text-xs font-mono text-slate-300 font-semibold uppercase tracking-wider flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>Frecuencia & Nota</span>
+            </div>
+            {liveConfidence > 0 && (
+              <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30">
+                Conf: {(liveConfidence * 100).toFixed(0)}%
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             {/* Live Note Name */}
-            <div className="bg-[#090d29] p-3 rounded-xl border border-indigo-500/25 flex flex-col items-center justify-center">
+            <div className="bg-[#090d29] p-2.5 sm:p-3 rounded-xl border border-indigo-500/25 flex flex-col items-center justify-center">
               <span className="text-[10px] font-mono text-slate-400">Nota Musical</span>
-              <span className="text-2xl font-black font-mono text-cyan-300 tracking-wider">
+              <span className="text-xl sm:text-2xl font-black font-mono text-cyan-300 tracking-wider">
                 {liveNoteName}
               </span>
             </div>
 
             {/* Live MIDI number */}
-            <div className="bg-[#090d29] p-3 rounded-xl border border-indigo-500/25 flex flex-col items-center justify-center">
+            <div className="bg-[#090d29] p-2.5 sm:p-3 rounded-xl border border-indigo-500/25 flex flex-col items-center justify-center">
               <span className="text-[10px] font-mono text-slate-400">MIDI / ASCII</span>
-              <span className="text-2xl font-black font-mono text-indigo-200 tracking-wider">
+              <span className="text-xl sm:text-2xl font-black font-mono text-indigo-200 tracking-wider">
                 {liveMidi !== null ? liveMidi : '---'}
               </span>
             </div>
           </div>
 
           {/* Hertz Display */}
-          <div className="bg-[#090d29] p-2.5 rounded-xl border border-indigo-500/25 flex items-center justify-between px-4">
+          <div className="bg-[#090d29] p-2.5 rounded-xl border border-indigo-500/25 flex items-center justify-between px-3 sm:px-4">
             <span className="text-xs font-mono text-slate-400">Frecuencia:</span>
-            <span className="text-base font-bold font-mono text-white">
+            <span className="text-sm sm:text-base font-bold font-mono text-white">
               {liveFreq !== null ? `${liveFreq.toFixed(1)} Hz` : '--- Hz'}
             </span>
           </div>
 
-          {/* VU Meter (Input level) */}
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-              <span>Nivel Entrada (RMS)</span>
-              <span>{(liveRms * 100).toFixed(1)}%</span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden p-0.5 border border-indigo-500/30">
-              <div
-                className={`h-full rounded-full transition-all duration-75 ${
-                  liveRms >= noiseThreshold
-                    ? 'bg-gradient-to-r from-cyan-400 to-emerald-400'
-                    : 'bg-indigo-500/40'
+          {/* Segmented LED VU Meter */}
+          <div className="space-y-1.5 bg-[#090d29] p-2.5 rounded-xl border border-indigo-500/25">
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className="text-slate-400 flex items-center gap-1.5">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    liveRms >= noiseThreshold ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'
+                  }`}
+                />
+                <span>Vúmetro RMS: {(liveRms * 100).toFixed(1)}%</span>
+              </span>
+              <span
+                className={`font-semibold ${
+                  liveRms >= noiseThreshold ? 'text-emerald-400' : 'text-slate-500'
                 }`}
-                style={{ width: `${Math.min(100, (liveRms / 0.1) * 100)}%` }}
-              />
+              >
+                {liveRms >= noiseThreshold ? 'AUDIO CAPTADO' : 'SILENCIO'}
+              </span>
+            </div>
+
+            {/* 12-Segment LED Visualizer */}
+            <div className="grid grid-cols-12 gap-1 h-3 p-1 rounded-lg bg-[#040615] border border-indigo-500/30">
+              {Array.from({ length: 12 }).map((_, idx) => {
+                const stepRms = ((idx + 1) / 12) * 0.1;
+                const isLit = liveRms >= stepRms;
+                let colorClass = 'bg-slate-800';
+                if (isLit) {
+                  if (idx < 6) {
+                    colorClass = 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]';
+                  } else if (idx < 9) {
+                    colorClass = 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]';
+                  } else {
+                    colorClass = 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]';
+                  }
+                }
+                return (
+                  <div
+                    key={idx}
+                    className={`rounded-sm transition-colors duration-75 ${colorClass}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[9px] font-mono text-slate-500 px-0.5">
+              <span>0%</span>
+              <span className="text-rose-400/80">Umbral ({(noiseThreshold * 100).toFixed(1)}%)</span>
+              <span>10%</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* 4. Progressive Revelation Card: Letras Reconstruidas */}
-      <div className="bg-[#06091f]/90 border border-indigo-500/20 rounded-2xl p-5 backdrop-blur-md shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-500/20 pb-3">
+      <div className="bg-[#06091f]/90 border border-indigo-500/20 rounded-2xl p-3.5 sm:p-5 backdrop-blur-md shadow-xl space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 border-b border-indigo-500/20 pb-3">
           <div>
-            <h3 className="text-sm font-semibold font-mono text-white tracking-wider uppercase flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-xs sm:text-sm font-semibold font-mono text-white tracking-wider uppercase flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
               <span>Revelación Progresiva del Nombre</span>
             </h3>
-            <p className="text-xs text-slate-400 font-mono">
+            <p className="text-[11px] sm:text-xs text-slate-400 font-mono">
               Las letras emergen conforme se valida cada tono por autocorrelación
             </p>
           </div>
 
           {/* Letter count badge */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono px-3 py-1 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] sm:text-xs font-mono px-2.5 sm:px-3 py-1 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300">
               {decodedLetters.length} {decodedLetters.length === 1 ? 'letra captada' : 'letras captadas'}
             </span>
 
             {isSequenceCompleted && (
-              <span className="text-xs font-mono px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[10px] sm:text-xs font-mono px-2.5 sm:px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>Secuencia Cerrada</span>
               </span>
             )}
@@ -886,47 +1075,47 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
 
         {/* Letters Tape */}
         {decodedLetters.length === 0 ? (
-          <div className="py-12 flex flex-col items-center justify-center text-center space-y-2 border border-dashed border-indigo-500/25 rounded-xl bg-[#080d28]/40">
+          <div className="py-8 sm:py-12 flex flex-col items-center justify-center text-center space-y-2 border border-dashed border-indigo-500/25 rounded-xl bg-[#080d28]/40 px-4">
             <Radio className="w-8 h-8 text-cyan-400/50 animate-pulse" />
-            <p className="text-sm font-mono text-slate-300">Ninguna nota detectada aún</p>
-            <p className="text-xs font-mono text-slate-400/70 max-w-md">
+            <p className="text-xs sm:text-sm font-mono text-slate-300">Ninguna nota detectada aún</p>
+            <p className="text-[11px] sm:text-xs font-mono text-slate-400/70 max-w-md">
               Activa el micrófono y reproduce la firma sonora en otro teléfono. Cada tono se
               decodificará automáticamente aquí.
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-indigo-500/40">
-            <div className="flex items-stretch gap-2.5 min-w-max">
+            <div className="flex items-stretch gap-2 sm:gap-2.5 min-w-max">
               {decodedLetters.map((l, idx) => (
                 <motion.div
                   key={l.id}
                   initial={{ opacity: 0, scale: 0.8, y: 15 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                  className="relative flex flex-col items-center justify-between p-3 rounded-xl border border-cyan-400/50 bg-gradient-to-b from-indigo-950/70 via-[#0a0f30] to-[#0c143c] min-w-[88px] shadow-[0_0_15px_rgba(6,182,212,0.25)] select-none"
+                  className="relative flex flex-col items-center justify-between p-2.5 sm:p-3 rounded-xl border border-cyan-400/50 bg-gradient-to-b from-indigo-950/70 via-[#0a0f30] to-[#0c143c] min-w-[78px] sm:min-w-[88px] shadow-[0_0_15px_rgba(6,182,212,0.25)] select-none"
                 >
                   {/* Step order */}
-                  <span className="text-[10px] font-mono text-indigo-300/80 font-semibold">
+                  <span className="text-[9px] sm:text-[10px] font-mono text-indigo-300/80 font-semibold">
                     Paso {idx + 1}
                   </span>
 
                   {/* Decoded Character */}
-                  <div className="my-1 text-3xl font-black font-mono text-cyan-200 drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]">
+                  <div className="my-1 text-2xl sm:text-3xl font-black font-mono text-cyan-200 drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]">
                     {l.char}
                   </div>
 
                   {/* ASCII & MIDI */}
-                  <div className="text-[11px] font-mono text-cyan-300 bg-[#060b22] px-2 py-0.5 rounded border border-cyan-500/30 mb-1.5 shadow-inner">
+                  <div className="text-[10px] sm:text-[11px] font-mono text-cyan-300 bg-[#060b22] px-1.5 sm:px-2 py-0.5 rounded border border-cyan-500/30 mb-1 sm:mb-1.5 shadow-inner">
                     ASCII {l.ascii}
                   </div>
 
                   {/* Musical Note & Hz */}
                   <div className="flex flex-col items-center text-center">
-                    <div className="flex items-center gap-1 text-xs font-semibold font-mono text-white">
-                      <Music className="w-3 h-3 text-sky-400" />
+                    <div className="flex items-center gap-1 text-[11px] sm:text-xs font-semibold font-mono text-white">
+                      <Music className="w-3 h-3 text-sky-400 shrink-0" />
                       <span>{l.noteName}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-slate-400">
+                    <div className="text-[9px] sm:text-[10px] font-mono text-slate-400">
                       {l.frequency.toFixed(1)} Hz
                     </div>
                   </div>
@@ -943,26 +1132,26 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="bg-gradient-to-br from-[#060b28] via-[#091138] to-[#06091f] border-2 border-cyan-400/40 rounded-2xl p-6 shadow-2xl backdrop-blur-md space-y-6"
+          className="bg-gradient-to-br from-[#060b28] via-[#091138] to-[#06091f] border-2 border-cyan-400/40 rounded-2xl p-4 sm:p-6 shadow-2xl backdrop-blur-md space-y-4 sm:space-y-6"
         >
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-500/30 pb-4">
             <div>
-              <span className="text-[11px] font-mono text-cyan-300 uppercase tracking-widest flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span className="text-[10px] sm:text-[11px] font-mono text-cyan-300 uppercase tracking-widest flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Nombre Completo Reconstruido por el Aire</span>
               </span>
-              <h3 className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-sky-100 to-indigo-200 drop-shadow-[0_0_20px_rgba(56,189,248,0.5)] uppercase mt-1">
+              <h3 className="text-2xl sm:text-4xl font-black font-mono tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-sky-100 to-indigo-200 drop-shadow-[0_0_20px_rgba(56,189,248,0.5)] uppercase mt-1 break-all">
                 {completedWord}
               </h3>
             </div>
 
             {/* Actions for the Reconstructed Word */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="grid grid-cols-1 sm:flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <button
                 id="btn-copy-decoded-word"
                 type="button"
                 onClick={handleCopyWord}
-                className="px-4 py-2.5 rounded-xl bg-[#0c1544] hover:bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 font-mono text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+                className="w-full sm:w-auto justify-center px-4 py-2.5 rounded-xl bg-[#0c1544] hover:bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 font-mono text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copied ? '¡Copiado!' : 'Copiar Texto'}</span>
@@ -972,7 +1161,7 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
                 id="btn-send-to-emitter"
                 type="button"
                 onClick={() => onSendToEmitter(completedWord)}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-mono text-xs font-semibold flex items-center gap-2 shadow-[0_0_15px_rgba(99,102,241,0.4)] transition-all cursor-pointer active:scale-95"
+                className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-mono text-xs font-semibold flex items-center gap-2 shadow-[0_0_15px_rgba(99,102,241,0.4)] transition-all cursor-pointer active:scale-95"
               >
                 <span>Cargar en Modo Emisor</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -982,17 +1171,17 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
 
           {/* Automatic Cartesian Curve Display of Reconstructed Name */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-200 font-mono flex items-center gap-2">
-                <LineChart className="w-4 h-4 text-sky-400" />
-                <span>Curva Cartesiana Interpolada del Nombre Reconstruido</span>
+                <LineChart className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>Curva Cartesiana Interpolada</span>
               </h4>
-              <span className="text-[11px] font-mono text-slate-400">
-                Polinomio $P(x)$ generado a partir de las notas captadas
+              <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">
+                Polinomio generado a partir de las notas captadas
               </span>
             </div>
 
-            <div className="h-[280px] sm:h-[320px]">
+            <div className="h-[260px] sm:h-[320px]">
               <CartesianCanvas
                 points={completedPoints}
                 mode="lagrange"
